@@ -518,9 +518,13 @@
       <div class="field" style="margin-bottom:14px;">
         <label>Managing property</label>
         <select id="admin-prop-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;">
-          <option value="home1">Ground Floor Home#1</option>
-          <option value="home2">Home#2 · Behind the house</option>
+          <option value="home1">Ground Floor - Home#1</option>
+          <option value="home2">Ground Floor - Home#2</option>
         </select>
+      </div>
+      <div id="admin-requests-section" style="margin-bottom:18px;">
+        <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Pending booking requests</div>
+        <div id="admin-requests-list" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
       <div class="cal-head">
         <button class="cal-nav" id="admin-cal-prev">&larr;</button>
@@ -537,11 +541,29 @@
         <button class="btn btn-primary" id="admin-cal-done" style="padding:10px 16px;">Done</button>
       </div>
     </div>
+    <div id="admin-invoice-view" style="display:none;">
+      <div class="cal-title" style="text-align:left;margin-bottom:14px;">Create invoice</div>
+      <div class="field"><label>Guest name</label><input id="inv-name"></div>
+      <div class="field"><label>Guest WhatsApp number</label><input id="inv-phone"></div>
+      <div class="field"><label>Property</label><input id="inv-property" readonly></div>
+      <div class="field"><label>Check-in</label><input id="inv-checkin" readonly></div>
+      <div class="field"><label>Check-out</label><input id="inv-checkout" readonly></div>
+      <div class="field"><label>Nights</label><input id="inv-nights" readonly></div>
+      <div class="field"><label>Guests</label><input id="inv-guests" readonly></div>
+      <div class="field"><label>Price per night (Rs.)</label><input type="number" id="inv-rate" placeholder="e.g. 2500"></div>
+      <div class="field"><label>Total amount (Rs.)</label><input type="number" id="inv-total" placeholder="auto-fills from rate, editable"></div>
+      <div class="cal-hint" id="inv-error" style="color:var(--wood);"></div>
+      <div class="cal-actions" style="margin-top:14px;">
+        <button class="btn btn-ghost" id="inv-back" style="padding:10px 16px;">Back</button>
+        <button class="btn btn-primary" id="inv-generate" style="padding:10px 16px;">Generate Invoice</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyCBDayBdvOzBhb76vZN68-nBEvHv5Iol_M",
@@ -794,6 +816,16 @@ document.getElementById('submit-btn').addEventListener('click', async ()=>{
   }
   await saveBlockedDates();
 
+  // Log this request so it shows up in the admin's Pending Requests list
+  try{
+    const reqId = 'request_' + Date.now();
+    await db.collection('genga_nilayam').doc(reqId).set({
+      name, phone, property: currentProperty, propertyName: PROPERTIES[currentProperty].name,
+      checkin, checkout, checkinTime, checkoutTime, guests, message,
+      status: 'pending', submittedAt: new Date().toISOString()
+    });
+  }catch(e){ /* non-fatal: the WhatsApp message below still goes through */ }
+
   const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 });
@@ -827,16 +859,19 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   }
   document.getElementById('admin-pin-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
+  document.getElementById('admin-invoice-view').style.display = 'none';
   const t = new Date();
   adminViewYear = t.getFullYear(); adminViewMonth = t.getMonth();
   document.getElementById('admin-prop-select').value = adminProperty;
   await loadBlockedDates(adminProperty);
   renderAdminCalendar();
+  await loadPendingRequests();
 });
 document.getElementById('admin-prop-select').addEventListener('change', async (e)=>{
   adminProperty = e.target.value;
   await loadBlockedDates(adminProperty);
   renderAdminCalendar();
+  await loadPendingRequests();
 });
 document.getElementById('admin-cal-done').addEventListener('click', async ()=>{
   document.getElementById('admin-overlay').classList.remove('show');
@@ -869,6 +904,169 @@ function renderAdminCalendar(){
 }
 
 loadBlockedDates();
+
+/* ---------- Booking requests & invoicing ---------- */
+function normalizePhone(raw){
+  const digits = (raw||'').replace(/\D/g,'');
+  if(digits.length === 10) return '91' + digits;
+  if(digits.length === 12 && digits.startsWith('91')) return digits;
+  return digits;
+}
+
+let currentInvoiceReqId = null;
+let currentInvoiceReqs = [];
+
+async function loadPendingRequests(){
+  const listEl = document.getElementById('admin-requests-list');
+  listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
+  try{
+    const snap = await db.collection('genga_nilayam').get();
+    const requests = [];
+    snap.forEach(doc=>{
+      const data = doc.data();
+      if(doc.id.startsWith('request_') && data.status === 'pending' && data.property === adminProperty){
+        requests.push({ id: doc.id, ...data });
+      }
+    });
+    requests.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
+    currentInvoiceReqs = requests;
+    if(requests.length === 0){
+      listEl.innerHTML = '<div class="cal-hint">No pending requests for this property.</div>';
+      return;
+    }
+    listEl.innerHTML = requests.map(r => `
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+        <div style="font-weight:600;">${r.name || 'Guest'}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.guests || '?'} guests</div>
+        <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="margin-top:8px;padding:8px 14px;font-size:13px;">Create Invoice</button>
+      </div>
+    `).join('');
+    listEl.querySelectorAll('.admin-invoice-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const req = currentInvoiceReqs.find(r=>r.id === btn.getAttribute('data-req-id'));
+        if(req) openInvoiceView(req);
+      });
+    });
+  }catch(e){
+    listEl.innerHTML = '<div class="cal-hint">Could not load requests.</div>';
+  }
+}
+
+function openInvoiceView(req){
+  currentInvoiceReqId = req.id;
+  document.getElementById('admin-cal-view').style.display = 'none';
+  document.getElementById('admin-invoice-view').style.display = 'block';
+  document.getElementById('inv-name').value = req.name || '';
+  document.getElementById('inv-phone').value = req.phone || '';
+  document.getElementById('inv-property').value = PROPERTIES[req.property] ? PROPERTIES[req.property].name : (req.propertyName || req.property);
+  document.getElementById('inv-checkin').value = fmtDate(req.checkin);
+  document.getElementById('inv-checkout').value = fmtDate(req.checkout);
+  document.getElementById('inv-guests').value = req.guests || '';
+  const nights = Math.max(1, Math.round((new Date(req.checkout+'T00:00:00') - new Date(req.checkin+'T00:00:00')) / 86400000));
+  document.getElementById('inv-nights').value = nights;
+  document.getElementById('inv-rate').value = '';
+  document.getElementById('inv-total').value = '';
+  document.getElementById('inv-error').textContent = '';
+}
+
+document.getElementById('inv-rate').addEventListener('input', ()=>{
+  const rate = Number(document.getElementById('inv-rate').value) || 0;
+  const nights = Number(document.getElementById('inv-nights').value) || 0;
+  document.getElementById('inv-total').value = (rate * nights) || '';
+});
+
+document.getElementById('inv-back').addEventListener('click', async ()=>{
+  document.getElementById('admin-invoice-view').style.display = 'none';
+  document.getElementById('admin-cal-view').style.display = 'block';
+  await loadPendingRequests();
+});
+
+document.getElementById('inv-generate').addEventListener('click', async ()=>{
+  const name = document.getElementById('inv-name').value.trim();
+  const phoneRaw = document.getElementById('inv-phone').value.trim();
+  const total = Number(document.getElementById('inv-total').value);
+  const rate = Number(document.getElementById('inv-rate').value);
+  const nights = Number(document.getElementById('inv-nights').value);
+  const property = document.getElementById('inv-property').value;
+  const checkin = document.getElementById('inv-checkin').value;
+  const checkout = document.getElementById('inv-checkout').value;
+  const guests = document.getElementById('inv-guests').value;
+
+  if(!name || !total){
+    document.getElementById('inv-error').textContent = 'Please fill in guest name and a total amount.';
+    return;
+  }
+
+  const invoiceNo = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900);
+  const issuedDate = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text('Genga Nilayam Homestay', 14, 20);
+    doc.setFontSize(10);
+    doc.text('Virudhunagar, Tamil Nadu', 14, 27);
+    doc.text('WhatsApp: +91 73975 85569', 14, 32);
+
+    doc.setFontSize(12);
+    doc.text('Invoice: ' + invoiceNo, 130, 20);
+    doc.text('Date: ' + issuedDate, 130, 26);
+
+    doc.setDrawColor(200);
+    doc.line(14, 38, 196, 38);
+
+    doc.setFontSize(11);
+    doc.text('Billed to:', 14, 48);
+    doc.setFontSize(13);
+    doc.text(name, 14, 55);
+    if(phoneRaw){ doc.setFontSize(10); doc.text(phoneRaw, 14, 61); }
+
+    doc.setFontSize(11);
+    let y = 75;
+    doc.text('Property:', 14, y); doc.text(String(property), 70, y); y += 8;
+    doc.text('Check-in:', 14, y); doc.text(String(checkin), 70, y); y += 8;
+    doc.text('Check-out:', 14, y); doc.text(String(checkout), 70, y); y += 8;
+    doc.text('Guests:', 14, y); doc.text(String(guests), 70, y); y += 8;
+    doc.text('Nights:', 14, y); doc.text(String(nights), 70, y); y += 8;
+    if(rate){ doc.text('Rate per night:', 14, y); doc.text('Rs. ' + rate, 70, y); y += 8; }
+
+    y += 6;
+    doc.setDrawColor(200);
+    doc.line(14, y, 196, y);
+    y += 10;
+    doc.setFontSize(14);
+    doc.text('Total Amount:', 14, y);
+    doc.text('Rs. ' + total, 150, y);
+
+    y += 20;
+    doc.setFontSize(9);
+    doc.text('Thank you for booking with Genga Nilayam Homestay!', 14, y);
+
+    doc.save(invoiceNo + '.pdf');
+  }catch(e){
+    document.getElementById('inv-error').textContent = 'Could not generate the PDF. Please try again.';
+    return;
+  }
+
+  try{
+    if(currentInvoiceReqId){
+      await db.collection('genga_nilayam').doc(currentInvoiceReqId).update({ status: 'invoiced', invoiceNo, total });
+    }
+  }catch(e){ /* non-fatal */ }
+
+  const guestNumber = normalizePhone(phoneRaw);
+  if(guestNumber){
+    let msg = `Hi ${name}, here's your booking invoice from Genga Nilayam Homestay.\n\n`;
+    msg += `Invoice: ${invoiceNo}\nProperty: ${property}\n${checkin} to ${checkout} (${nights} night${nights>1?'s':''})\nTotal: Rs. ${total}\n\n`;
+    msg += `I'm attaching the PDF invoice to this chat.`;
+    window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+  }
+
+  document.getElementById('admin-invoice-view').style.display = 'none';
+  document.getElementById('admin-cal-view').style.display = 'block';
+  await loadPendingRequests();
+});
 </script>
 
 </body>
