@@ -522,6 +522,7 @@
           <option value="home2">Ground Floor - Home#2</option>
         </select>
       </div>
+      <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Generate Report</button>
       <div id="admin-requests-section" style="margin-bottom:18px;">
         <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Pending booking requests</div>
         <div id="admin-requests-list" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -539,6 +540,14 @@
       <div class="cal-actions">
         <div class="cal-hint">Tap a date to block/unblock it</div>
         <button class="btn btn-primary" id="admin-cal-done" style="padding:10px 16px;">Done</button>
+      </div>
+    </div>
+    <div id="admin-report-view" style="display:none;">
+      <div class="cal-title" style="text-align:left;margin-bottom:14px;">All future check-ins</div>
+      <div id="admin-report-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
+      <div class="cal-actions" style="margin-top:14px;">
+        <div></div>
+        <button class="btn btn-primary" id="report-back" style="padding:10px 16px;">Back</button>
       </div>
     </div>
     <div id="admin-invoice-view" style="display:none;">
@@ -860,6 +869,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   document.getElementById('admin-pin-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   document.getElementById('admin-invoice-view').style.display = 'none';
+  document.getElementById('admin-report-view').style.display = 'none';
   const t = new Date();
   adminViewYear = t.getFullYear(); adminViewMonth = t.getMonth();
   document.getElementById('admin-prop-select').value = adminProperty;
@@ -959,8 +969,8 @@ function openInvoiceView(req){
   document.getElementById('inv-name').value = req.name || '';
   document.getElementById('inv-phone').value = req.phone || '';
   document.getElementById('inv-property').value = PROPERTIES[req.property] ? PROPERTIES[req.property].name : (req.propertyName || req.property);
-  document.getElementById('inv-checkin').value = fmtDate(req.checkin);
-  document.getElementById('inv-checkout').value = fmtDate(req.checkout);
+  document.getElementById('inv-checkin').value = fmtDate(req.checkin) + (req.checkinTime ? ' at ' + fmtTime(req.checkinTime) : '');
+  document.getElementById('inv-checkout').value = fmtDate(req.checkout) + (req.checkoutTime ? ' at ' + fmtTime(req.checkoutTime) : '');
   document.getElementById('inv-guests').value = req.guests || '';
   const nights = Math.max(1, Math.round((new Date(req.checkout+'T00:00:00') - new Date(req.checkin+'T00:00:00')) / 86400000));
   document.getElementById('inv-nights').value = nights;
@@ -1066,6 +1076,47 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
   document.getElementById('admin-invoice-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadPendingRequests();
+});
+
+/* ---------- Generate Report: every future check-in, both properties ---------- */
+async function generateReport(){
+  const listEl = document.getElementById('admin-report-list');
+  listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
+  try{
+    const snap = await db.collection('genga_nilayam').get();
+    const today = todayKey();
+    const all = [];
+    snap.forEach(doc=>{
+      const data = doc.data();
+      if(doc.id.startsWith('request_') && data.checkin && data.checkin >= today){
+        all.push(data);
+      }
+    });
+    all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
+    if(all.length === 0){
+      listEl.innerHTML = '<div class="cal-hint">No upcoming check-ins.</div>';
+      return;
+    }
+    listEl.innerHTML = all.map(r => `
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+        <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : 'Pending'}</div>
+      </div>
+    `).join('');
+  }catch(e){
+    listEl.innerHTML = '<div class="cal-hint">Could not load report.</div>';
+  }
+}
+
+document.getElementById('admin-report-btn').addEventListener('click', async ()=>{
+  document.getElementById('admin-cal-view').style.display = 'none';
+  document.getElementById('admin-report-view').style.display = 'block';
+  await generateReport();
+});
+document.getElementById('report-back').addEventListener('click', ()=>{
+  document.getElementById('admin-report-view').style.display = 'none';
+  document.getElementById('admin-cal-view').style.display = 'block';
 });
 </script>
 
