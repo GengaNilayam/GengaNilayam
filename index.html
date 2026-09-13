@@ -522,7 +522,8 @@
           <option value="home2">Ground Floor - Home#2</option>
         </select>
       </div>
-      <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Generate Report</button>
+      <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate check-in report</button>
+      <button type="button" class="btn btn-primary" id="admin-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Generate Revenue report</button>
       <div id="admin-requests-section" style="margin-bottom:18px;">
         <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Pending booking requests</div>
         <div id="admin-requests-list" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -548,6 +549,14 @@
       <div class="cal-actions" style="margin-top:14px;">
         <div></div>
         <button class="btn btn-primary" id="report-back" style="padding:10px 16px;">Back</button>
+      </div>
+    </div>
+    <div id="admin-revenue-view" style="display:none;">
+      <div class="cal-title" style="text-align:left;margin-bottom:14px;">Revenue this month</div>
+      <div id="admin-revenue-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
+      <div class="cal-actions" style="margin-top:14px;">
+        <div></div>
+        <button class="btn btn-primary" id="revenue-back" style="padding:10px 16px;">Back</button>
       </div>
     </div>
     <div id="admin-invoice-view" style="display:none;">
@@ -870,6 +879,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   document.getElementById('admin-cal-view').style.display = 'block';
   document.getElementById('admin-invoice-view').style.display = 'none';
   document.getElementById('admin-report-view').style.display = 'none';
+  document.getElementById('admin-revenue-view').style.display = 'none';
   const t = new Date();
   adminViewYear = t.getFullYear(); adminViewMonth = t.getMonth();
   document.getElementById('admin-prop-select').value = adminProperty;
@@ -1061,15 +1071,24 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
 
   try{
     if(currentInvoiceReqId){
-      await db.collection('genga_nilayam').doc(currentInvoiceReqId).update({ status: 'invoiced', invoiceNo, total });
+      await db.collection('genga_nilayam').doc(currentInvoiceReqId).update({ status: 'invoiced', invoiceNo, total, invoicedAt: new Date().toISOString() });
     }
   }catch(e){ /* non-fatal */ }
 
   const guestNumber = normalizePhone(phoneRaw);
   if(guestNumber){
-    let msg = `Hi ${name}, here's your booking invoice from Genga Nilayam Homestay.\n\n`;
-    msg += `Invoice: ${invoiceNo}\nProperty: ${property}\n${checkin} to ${checkout} (${nights} night${nights>1?'s':''})\nTotal: Rs. ${total}\n\n`;
-    msg += `I'm attaching the PDF invoice to this chat.`;
+    let msg = `*Genga Nilayam Homestay*\nVirudhunagar, Tamil Nadu\n\n`;
+    msg += `Invoice: ${invoiceNo}\nDate: ${issuedDate}\n\n`;
+    msg += `Billed to: ${name}\n`;
+    if(phoneRaw) msg += `${phoneRaw}\n`;
+    msg += `\nProperty: ${property}\n`;
+    msg += `Check-in: ${checkin}\n`;
+    msg += `Check-out: ${checkout}\n`;
+    msg += `Guests: ${guests}\n`;
+    msg += `Nights: ${nights}\n`;
+    if(rate) msg += `Rate per night: Rs. ${rate}\n`;
+    msg += `\n*Total Amount: Rs. ${total}*\n\n`;
+    msg += `Thank you for booking with Genga Nilayam Homestay!`;
     window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
   }
 
@@ -1116,6 +1135,60 @@ document.getElementById('admin-report-btn').addEventListener('click', async ()=>
 });
 document.getElementById('report-back').addEventListener('click', ()=>{
   document.getElementById('admin-report-view').style.display = 'none';
+  document.getElementById('admin-cal-view').style.display = 'block';
+});
+
+/* ---------- Generate Revenue report: total invoiced this calendar month ---------- */
+async function generateRevenueReport(){
+  const listEl = document.getElementById('admin-revenue-list');
+  listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
+  try{
+    const snap = await db.collection('genga_nilayam').get();
+    const now = new Date();
+    const curYear = now.getFullYear(), curMonth = now.getMonth();
+    let total = 0, count = 0;
+    const items = [];
+    snap.forEach(doc=>{
+      const data = doc.data();
+      if(!doc.id.startsWith('request_') || data.status !== 'invoiced') return;
+      let invDate = null;
+      if(data.invoicedAt){
+        invDate = new Date(data.invoicedAt);
+      } else if(data.invoiceNo){
+        const m = String(data.invoiceNo).match(/GN-(\d{4})(\d{2})(\d{2})-/);
+        if(m) invDate = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+      }
+      if(!invDate || invDate.getFullYear() !== curYear || invDate.getMonth() !== curMonth) return;
+      const amt = Number(data.total) || 0;
+      total += amt;
+      count += 1;
+      items.push({ name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt });
+    });
+    items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
+
+    const monthLabel = now.toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+    let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>`;
+    html += `<div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:4px;">Rs. ${total.toLocaleString('en-IN')}</div>`;
+    html += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${count} invoice${count===1?'':'s'}</div>`;
+    html += items.map(r => `
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+        <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; Rs. ${r.amount.toLocaleString('en-IN')}</div>
+      </div>
+    `).join('');
+    listEl.innerHTML = html;
+  }catch(e){
+    listEl.innerHTML = '<div class="cal-hint">Could not load revenue report.</div>';
+  }
+}
+
+document.getElementById('admin-revenue-btn').addEventListener('click', async ()=>{
+  document.getElementById('admin-cal-view').style.display = 'none';
+  document.getElementById('admin-revenue-view').style.display = 'block';
+  await generateRevenueReport();
+});
+document.getElementById('revenue-back').addEventListener('click', ()=>{
+  document.getElementById('admin-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
 });
 </script>
