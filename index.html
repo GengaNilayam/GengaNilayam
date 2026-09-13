@@ -229,7 +229,7 @@
   <div class="hero-content">
     <div class="hero-eyebrow">Genga Nilayam Homestay · Virudhunagar</div>
     <h1>You don't stay, you belong!</h1>
-    <p>A full one-bedroom home with a living room, kitchen and terrace — comfortable for families and groups up to 10, 1.4 km from the railway station.</p>
+    <p>A 3-bedroom home with a living room, kitchen and terrace — comfortable for families and groups up to 7, 1.4 km from the railway station.</p>
     <div class="hero-actions">
     </div>
   </div>
@@ -252,7 +252,7 @@
       <h2 style="font-size:26px;margin:0 0 12px;">Ground Floor - Home#1</h2>
       <p style="color:var(--ink-soft);font-size:15px;">Ground Floor Home#1 is a self-contained 102 sqm home on the ground floor — a private bedroom, a spacious living and dining area, a fully equipped kitchen, and a terrace. It's built for families and groups travelling together, close to the town's markets and 1.4 km from Virudunagar Junction Railway Station.</p>
       <div class="stat-row">
-        <div><div class="num">10</div><div class="lbl">Max guests</div></div>
+        <div><div class="num">7</div><div class="lbl">Max guests</div></div>
         <div><div class="num">102</div><div class="lbl">sqm home</div></div>
         <div><div class="num">1.4 km</div><div class="lbl">to railway station</div></div>
         <div><div class="num">8.8</div><div class="lbl">guest rating</div></div>
@@ -383,7 +383,7 @@
       <div class="price-side">
         <ul>
           <li>Rates shown are per night, for the whole home</li>
-          <li>Up to 10 guests can be accommodated. Contact the property directly for more than 6 guests.</li>
+          <li>Up to 7 guests can be accommodated. Contact the property directly for more than 6 guests.</li>
           <li>24-hour check-in — check out any time up to 24 hours after you arrive</li>
         </ul>
       </div>
@@ -462,7 +462,7 @@
         <div class="field"><label>Check-out time</label><input type="time" id="f-checkout-time" value="12:00"></div>
       </div>
       <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4 PM check-in → 4 PM check-out the next day).</div>
-      <div class="field"><label>Number of guests</label><input type="number" min="1" max="10" id="f-guests" value="2"></div>
+      <div class="field"><label>Number of guests</label><input type="number" min="1" max="7" id="f-guests" value="2"></div>
       <div class="field"><label>Message (optional)</label><textarea id="f-message" placeholder="Anything else we should know?"></textarea></div>
       <button class="submit-btn" id="submit-btn">Send booking request on WhatsApp</button>
       <div class="hint">We'll reply on WhatsApp to confirm your dates and rate.</div>
@@ -601,7 +601,7 @@ const ADMIN_PIN = "2580";
 const DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
 const PROPERTIES = {
-  home1: { name: "Ground Floor - Home#1", maxGuests: 10, blockedKey: 'blocked_dates_home1' },
+  home1: { name: "Ground Floor - Home#1", maxGuests: 7, blockedKey: 'blocked_dates_home1' },
   home2: { name: "Ground Floor - Home#2", maxGuests: 8, blockedKey: 'blocked_dates_home2' }
 };
 let currentProperty = 'home1'; // guest-facing tab selection
@@ -1108,7 +1108,7 @@ async function generateReport(){
     snap.forEach(doc=>{
       const data = doc.data();
       if(doc.id.startsWith('request_') && data.checkin && data.checkin >= today){
-        all.push(data);
+        all.push({ id: doc.id, ...data });
       }
     });
     all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
@@ -1121,8 +1121,18 @@ async function generateReport(){
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : 'Pending'}</div>
+        <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="margin-top:8px;background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
       </div>
     `).join('');
+    listEl.querySelectorAll('.report-delete-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Permanently delete this booking record? This cannot be undone.')) return;
+        try{
+          await db.collection('genga_nilayam').doc(btn.getAttribute('data-req-id')).delete();
+          await generateReport();
+        }catch(e){ alert('Could not delete. Please try again.'); }
+      });
+    });
   }catch(e){
     listEl.innerHTML = '<div class="cal-hint">Could not load report.</div>';
   }
@@ -1162,7 +1172,7 @@ async function generateRevenueReport(){
       const amt = Number(data.total) || 0;
       total += amt;
       count += 1;
-      items.push({ name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt });
+      items.push({ id: doc.id, name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt });
     });
     items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
 
@@ -1174,9 +1184,19 @@ async function generateRevenueReport(){
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; Rs. ${r.amount.toLocaleString('en-IN')}</div>
+        <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="margin-top:8px;background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
       </div>
     `).join('');
     listEl.innerHTML = html;
+    listEl.querySelectorAll('.revenue-delete-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Permanently delete this booking record? This cannot be undone.')) return;
+        try{
+          await db.collection('genga_nilayam').doc(btn.getAttribute('data-req-id')).delete();
+          await generateRevenueReport();
+        }catch(e){ alert('Could not delete. Please try again.'); }
+      });
+    });
   }catch(e){
     listEl.innerHTML = '<div class="cal-hint">Could not load revenue report.</div>';
   }
