@@ -1268,6 +1268,25 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
 });
 
 /* ---------- Generate Report: every future check-in, both properties ---------- */
+// Lets the admin record an advance payment after the fact, since guests
+// typically pay it only once the invoice has already reached them.
+async function promptUpdateAdvance(reqId, currentAdvance, total, refreshFn){
+  const input = prompt('Advance paid so far (Rs.):', currentAdvance || '0');
+  if(input === null) return; // cancelled
+  const newAdvance = Number(input);
+  if(isNaN(newAdvance) || newAdvance < 0){
+    alert('Please enter a valid amount.');
+    return;
+  }
+  const newBalance = total - newAdvance;
+  try{
+    await db.collection('genga_nilayam').doc(reqId).update({ advance: newAdvance, balance: newBalance });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
 async function generateReport(){
   const listEl = document.getElementById('admin-report-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
@@ -1291,9 +1310,21 @@ async function generateReport(){
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : 'Pending'}</div>
-        <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="margin-top:8px;background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
+        ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
+        <div style="display:flex;gap:14px;margin-top:8px;">
+          ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
+          <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
+        </div>
       </div>
     `).join('');
+    listEl.querySelectorAll('.report-advance-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> promptUpdateAdvance(
+        btn.getAttribute('data-req-id'),
+        Number(btn.getAttribute('data-advance')),
+        Number(btn.getAttribute('data-total')),
+        generateReport
+      ));
+    });
     listEl.querySelectorAll('.report-delete-btn').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         if(!confirm('Permanently delete this booking record? This cannot be undone.')) return;
@@ -1355,10 +1386,21 @@ async function generateRevenueReport(){
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; Rs. ${r.amount.toLocaleString('en-IN')}</div>
         ${r.advance > 0 ? `<div style="font-size:13px;color:var(--ink-soft);">Advance: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>` : ''}
-        <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="margin-top:8px;background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
+        <div style="display:flex;gap:14px;margin-top:8px;">
+          <button type="button" class="revenue-advance-btn" data-req-id="${r.id}" data-advance="${r.advance}" data-total="${r.amount}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>
+          <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
+        </div>
       </div>
     `).join('');
     listEl.innerHTML = html;
+    listEl.querySelectorAll('.revenue-advance-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> promptUpdateAdvance(
+        btn.getAttribute('data-req-id'),
+        Number(btn.getAttribute('data-advance')),
+        Number(btn.getAttribute('data-total')),
+        generateRevenueReport
+      ));
+    });
     listEl.querySelectorAll('.revenue-delete-btn').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         if(!confirm('Permanently delete this booking record? This cannot be undone.')) return;
