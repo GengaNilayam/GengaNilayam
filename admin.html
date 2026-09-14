@@ -538,7 +538,9 @@ function computePaymentAmount(total, checkinDateStr){
 }
 
 function buildUpiLink(amount, note){
-  return `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(UPI_PAYEE_NAME)}&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+  // tez:// is Google Pay's own scheme - unlike the generic upi:// scheme,
+  // Android can't hand this off to some other app set as default handler.
+  return `tez://upi/pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(UPI_PAYEE_NAME)}&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
 }
 
 let currentInvoiceReqId = null;
@@ -756,6 +758,9 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     doc.setTextColor(8, 145, 168);
     doc.textWithLink(`Pay Rs. ${paymentAmount} now via GPay/UPI`, 14, y, { url: upiLink });
     doc.setTextColor(0, 0, 0);
+    y += 6;
+    doc.setFontSize(8);
+    doc.text(`No Google Pay? Pay any UPI app to: ${UPI_ID}`, 14, y);
 
     y += 16;
     doc.setFontSize(9);
@@ -802,6 +807,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
       msg += `*Balance Due: Rs. ${balance}*\n`;
     }
     msg += `\nPay Rs. ${paymentAmount} now via GPay/UPI:\n${upiLink}\n`;
+    msg += `No Google Pay? Pay any UPI app to: ${UPI_ID}\n`;
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
@@ -912,6 +918,9 @@ function regenerateInvoicePDF(r, e){
       doc.textWithLink(`Pay Rs. ${paymentAmount} now via GPay/UPI`, 14, y, { url: upiLink });
       doc.setTextColor(0, 0, 0);
       y += 6;
+      doc.setFontSize(8);
+      doc.text(`No Google Pay? Pay any UPI app to: ${UPI_ID}`, 14, y);
+      y += 6;
     }
 
     y += 16;
@@ -942,6 +951,7 @@ function regenerateInvoicePDF(r, e){
     }
     if(paymentAmount > 0){
       msg += `\nPay Rs. ${paymentAmount} now via GPay/UPI:\n${upiLink}\n`;
+      msg += `No Google Pay? Pay any UPI app to: ${UPI_ID}\n`;
     }
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
@@ -1269,6 +1279,9 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
     doc.setTextColor(8, 145, 168);
     doc.textWithLink(`Pay Rs. ${paymentAmount} now via GPay/UPI`, 14, y, { url: upiLink });
     doc.setTextColor(0, 0, 0);
+    y += 6;
+    doc.setFontSize(8);
+    doc.text(`No Google Pay? Pay any UPI app to: ${UPI_ID}`, 14, y);
 
     y += 16;
     doc.setFontSize(9);
@@ -1321,6 +1334,7 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
       msg += `*Balance Due: Rs. ${balance}*\n`;
     }
     msg += `\nPay Rs. ${paymentAmount} now via GPay/UPI:\n${upiLink}\n`;
+    msg += `No Google Pay? Pay any UPI app to: ${UPI_ID}\n`;
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
