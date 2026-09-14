@@ -464,7 +464,7 @@
       <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4 PM check-in → 4 PM check-out the next day).</div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" max="7" id="f-guests" value="2"></div>
       <div class="field"><label>Message (optional)</label><textarea id="f-message" placeholder="Anything else we should know?"></textarea></div>
-      <button class="submit-btn" id="submit-btn">Send booking request on WhatsApp</button>
+      <a class="submit-btn" id="submit-btn" href="#" style="display:block;">Send booking request on WhatsApp</a>
       <div class="hint">We'll reply on WhatsApp to confirm your dates and rate.</div>
     </div>
   </div>
@@ -573,7 +573,11 @@
       <div class="cal-hint" id="inv-error" style="color:var(--wood);"></div>
       <div class="cal-actions" style="margin-top:14px;">
         <button class="btn btn-ghost" id="inv-back" style="padding:10px 16px;">Back</button>
-        <button class="btn btn-primary" id="inv-generate" style="padding:10px 16px;">Generate Invoice</button>
+        <button class="btn btn-primary" id="inv-generate" style="padding:10px 16px;">Prepare Invoice</button>
+      </div>
+      <div id="inv-links" style="display:none;flex-direction:column;gap:10px;margin-top:14px;">
+        <a id="inv-pdf-link" class="btn btn-primary" href="#" target="_blank" style="padding:10px 16px;text-align:center;">Download Invoice PDF</a>
+        <a id="inv-wa-link" class="btn btn-primary" href="#" target="_blank" style="padding:10px 16px;text-align:center;">Message Guest on WhatsApp</a>
       </div>
     </div>
   </div>
@@ -640,6 +644,14 @@ function fmtTime(t){
   const d = new Date();
   d.setHours(h, m, 0, 0);
   return d.toLocaleTimeString('en-IN', { hour:'numeric', minute:'2-digit', hour12:true });
+}
+
+// Never let a slow or stuck network call block a user-facing action indefinitely.
+function withTimeout(promise, ms){
+  return Promise.race([
+    Promise.resolve(promise).catch(()=>{}),
+    new Promise(resolve => setTimeout(resolve, ms))
+  ]);
 }
 function toKey(y,m,d){
   return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -798,7 +810,7 @@ document.getElementById('f-checkin-time').addEventListener('input', ()=>{
 });
 
 /* ---------- Booking submit ---------- */
-document.getElementById('submit-btn').addEventListener('click', async ()=>{
+document.getElementById('submit-btn').addEventListener('click', function(e){
   const name = document.getElementById('f-name').value.trim();
   const phone = document.getElementById('f-phone').value.trim();
   const checkin = document.getElementById('f-checkin').value;
@@ -808,13 +820,8 @@ document.getElementById('submit-btn').addEventListener('click', async ()=>{
   const guests = document.getElementById('f-guests').value;
   const message = document.getElementById('f-message').value.trim();
 
-  if(!name){ alert('Please enter your name'); return; }
-  if(!checkin || !checkout){ alert('Please select your check-in and check-out dates'); return; }
-
-  // Open the tab synchronously, in direct response to the tap, before any
-  // awaits below — iOS Safari silently blocks window.open() once it happens
-  // after an async gap, even by a few milliseconds.
-  const waWindow = window.open('', '_blank');
+  if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
+  if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
   let text = `Hi, I'd like to book Genga Nilayam (${PROPERTIES[currentProperty].name}).\n\n`;
   text += `Name: ${name}\n`;
@@ -824,33 +831,22 @@ document.getElementById('submit-btn').addEventListener('click', async ()=>{
   text += `Guests: ${guests}\n`;
   if(message) text += `Message: ${message}\n`;
 
-  // Mark these nights as unavailable to other guests browsing the calendar.
-  // The check-in date is always blocked by the loop below. If check-out is after
-  // 11 AM, the home isn't free in time for a same-day new check-in, so block
-  // the check-out date too. Applies to both homes since each keeps its own list.
-  let d = new Date(checkin+'T00:00:00');
-  const end = new Date(checkout+'T00:00:00');
-  while(d < end){
-    blockedDates.add(toKey(d.getFullYear(), d.getMonth(), d.getDate()));
-    d.setDate(d.getDate()+1);
-  }
-  if(checkoutTime && checkoutTime > "11:00"){
-    blockedDates.add(toKey(end.getFullYear(), end.getMonth(), end.getDate()));
-  }
-  await saveBlockedDates();
+  // Point this same link at WhatsApp and let the browser's native click-follow
+  // handle the navigation — no window.open(), so no popup-blocker involved at
+  // all, on any browser.
+  e.currentTarget.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+  e.currentTarget.target = '_blank';
 
-  // Log this request so it shows up in the admin's Pending Requests list
-  try{
-    const reqId = 'request_' + Date.now();
-    await db.collection('genga_nilayam').doc(reqId).set({
-      name, phone, property: currentProperty, propertyName: PROPERTIES[currentProperty].name,
-      checkin, checkout, checkinTime, checkoutTime, guests, message,
-      status: 'pending', submittedAt: new Date().toISOString()
-    });
-  }catch(e){ /* non-fatal: the WhatsApp message below still goes through */ }
+  // Log the request only — dates are no longer blocked at submission time.
+  // Blocking now happens only when you confirm the booking and generate an
+  // invoice, so an unconfirmed request can't lock up the calendar.
 
-  const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
-  if(waWindow){ waWindow.location.href = url; } else { window.location.href = url; }
+  const reqId = 'request_' + Date.now();
+  db.collection('genga_nilayam').doc(reqId).set({
+    name, phone, property: currentProperty, propertyName: PROPERTIES[currentProperty].name,
+    checkin, checkout, checkinTime, checkoutTime, guests, message,
+    status: 'pending', submittedAt: new Date().toISOString()
+  }).catch(()=>{});
 });
 
 /* ---------- Admin panel ---------- */
@@ -939,7 +935,31 @@ function normalizePhone(raw){
 }
 
 let currentInvoiceReqId = null;
+let currentInvoiceReq = null;
 let currentInvoiceReqs = [];
+
+// Blocks a confirmed request's nights against the CORRECT property's own
+// Firestore doc — fetched fresh rather than reusing the in-memory
+// blockedDates set, since the admin could be viewing a different property
+// than the one this request belongs to.
+async function blockDatesForRequest(req){
+  try{
+    const key = PROPERTIES[req.property].blockedKey;
+    const doc = await db.collection('genga_nilayam').doc(key).get();
+    const dates = new Set(doc.exists && doc.data().dates ? doc.data().dates : []);
+    let d = new Date(req.checkin+'T00:00:00');
+    const end = new Date(req.checkout+'T00:00:00');
+    while(d < end){
+      dates.add(toKey(d.getFullYear(), d.getMonth(), d.getDate()));
+      d.setDate(d.getDate()+1);
+    }
+    if(req.checkoutTime && req.checkoutTime > "11:00"){
+      dates.add(toKey(end.getFullYear(), end.getMonth(), end.getDate()));
+    }
+    await db.collection('genga_nilayam').doc(key).set({ dates: [...dates] });
+    if(req.property === adminProperty){ blockedDates = dates; renderAdminCalendar(); }
+  }catch(e){ /* non-fatal: invoice still goes out even if this fails */ }
+}
 
 async function loadPendingRequests(){
   const listEl = document.getElementById('admin-requests-list');
@@ -979,6 +999,7 @@ async function loadPendingRequests(){
 
 function openInvoiceView(req){
   currentInvoiceReqId = req.id;
+  currentInvoiceReq = req;
   document.getElementById('admin-cal-view').style.display = 'none';
   document.getElementById('admin-invoice-view').style.display = 'block';
   document.getElementById('inv-name').value = req.name || '';
@@ -992,6 +1013,7 @@ function openInvoiceView(req){
   document.getElementById('inv-rate').value = '';
   document.getElementById('inv-total').value = '';
   document.getElementById('inv-error').textContent = '';
+  document.getElementById('inv-links').style.display = 'none';
 }
 
 document.getElementById('inv-rate').addEventListener('input', ()=>{
@@ -1021,11 +1043,6 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     document.getElementById('inv-error').textContent = 'Please fill in guest name and a total amount.';
     return;
   }
-
-  // Open the tab synchronously, right after validation, before any awaits —
-  // iOS Safari blocks window.open() once it happens after an async gap.
-  const guestNumber = normalizePhone(phoneRaw);
-  const waWindow = guestNumber ? window.open('', '_blank') : null;
 
   const invoiceNo = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900);
   const issuedDate = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
@@ -1073,7 +1090,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     doc.setFontSize(9);
     doc.text('Thank you for booking with Genga Nilayam Homestay!', 14, y);
 
-    doc.save(invoiceNo + '.pdf');
+    var pdfDataUri = doc.output('datauristring', { filename: invoiceNo + '.pdf' });
   }catch(e){
     document.getElementById('inv-error').textContent = 'Could not generate the PDF. Please try again.';
     return;
@@ -1085,7 +1102,16 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     }
   }catch(e){ /* non-fatal */ }
 
-  if(guestNumber && waWindow){
+  // Only now, with the booking confirmed, do the dates actually get blocked.
+  if(currentInvoiceReq){
+    await blockDatesForRequest(currentInvoiceReq);
+  }
+
+  document.getElementById('inv-pdf-link').href = pdfDataUri;
+
+  const guestNumber = normalizePhone(phoneRaw);
+  const waLink = document.getElementById('inv-wa-link');
+  if(guestNumber){
     let msg = `*Genga Nilayam Homestay*\nVirudhunagar, Tamil Nadu\n\n`;
     msg += `Invoice: ${invoiceNo}\nDate: ${issuedDate}\n\n`;
     msg += `Billed to: ${name}\n`;
@@ -1098,12 +1124,14 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     if(rate) msg += `Rate per night: Rs. ${rate}\n`;
     msg += `\n*Total Amount: Rs. ${total}*\n\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
-    waWindow.location.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+    waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+    waLink.style.display = '';
+  } else {
+    waLink.style.display = 'none';
   }
 
-  document.getElementById('admin-invoice-view').style.display = 'none';
-  document.getElementById('admin-cal-view').style.display = 'block';
-  await loadPendingRequests();
+  document.getElementById('inv-links').style.display = 'flex';
+  document.getElementById('inv-error').textContent = 'Invoice ready — tap below to download or message the guest.';
 });
 
 /* ---------- Generate Report: every future check-in, both properties ---------- */
