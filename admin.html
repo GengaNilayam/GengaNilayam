@@ -260,7 +260,9 @@
       <div class="cal-grid" id="admin-cal-grid"></div>
       <div class="cal-actions">
         <div class="cal-hint">Tap a date to block/unblock it</div>
-        <button class="btn btn-primary" id="admin-cal-done" style="padding:10px 16px;">Done</button>
+      </div>
+      <div style="text-align:center;margin-top:18px;">
+        <a href="index.html" style="color:var(--wood);font-size:13px;font-weight:600;text-decoration:underline;">&larr; Back to guest page</a>
       </div>
     </div>
     <div id="admin-report-view" style="display:none;">
@@ -489,9 +491,6 @@ document.getElementById('admin-prop-select').addEventListener('change', async (e
   await loadBlockedDates(adminProperty);
   renderAdminCalendar();
   await loadPendingRequests();
-});
-document.getElementById('admin-cal-done').addEventListener('click', ()=>{
-  window.location.href = 'index.html';
 });
 document.getElementById('admin-cal-prev').addEventListener('click', ()=>{
   adminViewMonth--; if(adminViewMonth<0){ adminViewMonth=11; adminViewYear--; } renderAdminCalendar();
