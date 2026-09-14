@@ -621,8 +621,7 @@
         <button class="btn btn-primary" id="q-generate" style="padding:10px 16px;">Generate Invoice</button>
       </div>
       <div id="q-links" style="display:none;flex-direction:column;gap:10px;margin-top:14px;">
-        <a id="q-pdf-link" class="btn btn-primary" href="#" target="_blank" style="padding:10px 16px;text-align:center;">View &amp; Save Invoice PDF</a>
-        <div class="hint" style="margin-top:-4px;">Opens the PDF — tap the share icon, then "Save to Files" to keep it on your phone.</div>
+        <a id="q-pdf-link" class="btn btn-primary" href="#" style="padding:10px 16px;text-align:center;">Download Invoice PDF</a>
         <a id="q-wa-link" class="btn btn-primary" href="#" target="_blank" style="padding:10px 16px;text-align:center;">Message Guest on WhatsApp</a>
       </div>
     </div>
@@ -644,8 +643,7 @@
         <button class="btn btn-primary" id="inv-generate" style="padding:10px 16px;">Prepare Invoice</button>
       </div>
       <div id="inv-links" style="display:none;flex-direction:column;gap:10px;margin-top:14px;">
-        <a id="inv-pdf-link" class="btn btn-primary" href="#" target="_blank" style="padding:10px 16px;text-align:center;">View &amp; Save Invoice PDF</a>
-        <div class="hint" style="margin-top:-4px;">Opens the PDF — tap the share icon, then "Save to Files" to keep it on your phone.</div>
+        <a id="inv-pdf-link" class="btn btn-primary" href="#" style="padding:10px 16px;text-align:center;">Download Invoice PDF</a>
         <a id="inv-wa-link" class="btn btn-primary" href="#" target="_blank" style="padding:10px 16px;text-align:center;">Message Guest on WhatsApp</a>
       </div>
     </div>
@@ -1046,6 +1044,7 @@ function normalizePhone(raw){
 let currentInvoiceReqId = null;
 let currentInvoiceReq = null;
 let currentInvoiceReqs = [];
+let currentReportItems = [];
 
 // Blocks a confirmed request's nights against the CORRECT property's own
 // Firestore doc — fetched fresh rather than reusing the in-memory
@@ -1237,7 +1236,9 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     await blockDatesForRequest(currentInvoiceReq);
   }
 
-  document.getElementById('inv-pdf-link').href = pdfDataUri;
+  const invPdfLink = document.getElementById('inv-pdf-link');
+  invPdfLink.href = pdfDataUri;
+  invPdfLink.setAttribute('download', invoiceNo + '.pdf');
 
   const guestNumber = normalizePhone(phoneRaw);
   const waLink = document.getElementById('inv-wa-link');
@@ -1289,6 +1290,100 @@ async function promptUpdateAdvance(reqId, currentAdvance, total, refreshFn){
   }
 }
 
+// Re-outputs an already-invoiced booking as a fresh PDF + WhatsApp message,
+// picking up whatever advance/balance is currently on record. No Firestore
+// writes here, so nothing to await - the download and WhatsApp open happen
+// immediately in the same tap.
+function regenerateInvoicePDF(r){
+  const invoiceNo = r.invoiceNo || ('GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900));
+  const issuedDate = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+  const total = Number(r.total) || 0;
+  const advance = Number(r.advance) || 0;
+  const balance = r.balance != null ? Number(r.balance) : total;
+  const propertyName = r.propertyName || r.property || '';
+  const checkinDisplay = fmtDate(r.checkin) + (r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : '');
+  const checkoutDisplay = fmtDate(r.checkout) + (r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : '');
+  const nights = Math.max(1, Math.round((new Date(r.checkout+'T00:00:00') - new Date(r.checkin+'T00:00:00')) / 86400000));
+
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.addImage(LOGO_DATA, 'PNG', 14, 10, 62, 22.9);
+    doc.setFontSize(10);
+    doc.text('Virudhunagar, Tamil Nadu', 14, 39);
+    doc.text('WhatsApp: +91 73975 85569', 14, 44);
+
+    doc.setFontSize(12);
+    doc.text('Invoice: ' + invoiceNo, 130, 20);
+    doc.text('Date: ' + issuedDate, 130, 26);
+
+    doc.setDrawColor(200);
+    doc.line(14, 50, 196, 50);
+
+    doc.setFontSize(11);
+    doc.text('Billed to:', 14, 58);
+    doc.setFontSize(13);
+    doc.text(r.name || 'Guest', 14, 65);
+    if(r.phone){ doc.setFontSize(10); doc.text(r.phone, 14, 71); }
+
+    doc.setFontSize(11);
+    let y = 85;
+    doc.text('Property:', 14, y); doc.text(String(propertyName), 70, y); y += 8;
+    doc.text('Check-in:', 14, y); doc.text(String(checkinDisplay), 70, y); y += 8;
+    doc.text('Check-out:', 14, y); doc.text(String(checkoutDisplay), 70, y); y += 8;
+    doc.text('Guests:', 14, y); doc.text(String(r.guests || '-'), 70, y); y += 8;
+    doc.text('Nights:', 14, y); doc.text(String(nights), 70, y); y += 8;
+
+    y += 6;
+    doc.setDrawColor(200);
+    doc.line(14, y, 196, y);
+    y += 10;
+    doc.setFontSize(14);
+    doc.text('Total Amount:', 14, y);
+    doc.text('Rs. ' + total, 150, y);
+    if(advance > 0){
+      y += 9;
+      doc.setFontSize(11);
+      doc.text('Advance Paid:', 14, y);
+      doc.text('Rs. ' + advance, 150, y);
+      y += 8;
+      doc.setFontSize(13);
+      doc.text('Balance Due:', 14, y);
+      doc.text('Rs. ' + balance, 150, y);
+    }
+
+    y += 20;
+    doc.setFontSize(9);
+    doc.text('Thank you for booking with Genga Nilayam Homestay!', 14, y);
+
+    doc.save(invoiceNo + '.pdf');
+  }catch(e){
+    alert('Could not generate the PDF. Please try again.');
+    return;
+  }
+
+  const guestNumber = normalizePhone(r.phone || '');
+  if(guestNumber){
+    let msg = `*Genga Nilayam Homestay*\nVirudhunagar, Tamil Nadu\n\n`;
+    msg += `Invoice: ${invoiceNo}\nDate: ${issuedDate}\n\n`;
+    msg += `Billed to: ${r.name || 'Guest'}\n`;
+    if(r.phone) msg += `${r.phone}\n`;
+    msg += `\nProperty: ${propertyName}\n`;
+    msg += `Check-in: ${checkinDisplay}\n`;
+    msg += `Check-out: ${checkoutDisplay}\n`;
+    if(r.guests) msg += `Guests: ${r.guests}\n`;
+    msg += `Nights: ${nights}\n`;
+    msg += `\n*Total Amount: Rs. ${total}*\n`;
+    if(advance > 0){
+      msg += `Advance Paid: Rs. ${advance}\n`;
+      msg += `*Balance Due: Rs. ${balance}*\n`;
+    }
+    msg += `\n`;
+    msg += `Thank you for booking with Genga Nilayam Homestay!`;
+    window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+  }
+}
+
 async function generateReport(){
   const listEl = document.getElementById('admin-report-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
@@ -1303,6 +1398,7 @@ async function generateReport(){
       }
     });
     all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
+    currentReportItems = all;
     if(all.length === 0){
       listEl.innerHTML = '<div class="cal-hint">No upcoming check-ins.</div>';
       return;
@@ -1313,12 +1409,19 @@ async function generateReport(){
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : 'Pending'}</div>
         ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
-        <div style="display:flex;gap:14px;margin-top:8px;">
+        <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
+          ${r.status === 'invoiced' ? `<button type="button" class="report-regen-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Regenerate invoice</button>` : ''}
           <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
         </div>
       </div>
     `).join('');
+    listEl.querySelectorAll('.report-regen-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
+        if(item) regenerateInvoicePDF(item);
+      });
+    });
     listEl.querySelectorAll('.report-advance-btn').forEach(btn=>{
       btn.addEventListener('click', ()=> promptUpdateAdvance(
         btn.getAttribute('data-req-id'),
@@ -1612,7 +1715,9 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
   // Block the calendar(s) now that this is confirmed — handles 'both' too.
   await blockDatesForRequest(reqData);
 
-  document.getElementById('q-pdf-link').href = pdfDataUri;
+  const qPdfLink = document.getElementById('q-pdf-link');
+  qPdfLink.href = pdfDataUri;
+  qPdfLink.setAttribute('download', invoiceNo + '.pdf');
 
   const guestNumber = normalizePhone(phoneRaw);
   const waLink = document.getElementById('q-wa-link');
