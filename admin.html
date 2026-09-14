@@ -585,13 +585,42 @@ async function loadPendingRequests(){
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.guests || '?'} guests</div>
-        <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="margin-top:8px;padding:8px 14px;font-size:13px;">Create Invoice</button>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
+          <button type="button" class="admin-reject-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;font-weight:600;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;">Reject</button>
+        </div>
       </div>
     `).join('');
     listEl.querySelectorAll('.admin-invoice-btn').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const req = currentInvoiceReqs.find(r=>r.id === btn.getAttribute('data-req-id'));
         if(req) openInvoiceView(req);
+      });
+    });
+    listEl.querySelectorAll('.admin-reject-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Reject this booking request? No dates are held for it, so this just removes it from the list.')) return;
+        const reqId = btn.getAttribute('data-req-id');
+        const req = currentInvoiceReqs.find(r => r.id === reqId);
+
+        const guestNumber = normalizePhone((req && req.phone) || '');
+        if(guestNumber){
+          const name = (req && req.name) || 'there';
+          const propertyName = (req && (req.propertyName || req.property)) || 'Genga Nilayam Homestay';
+          let msg = `Hi ${name}, thank you for reaching out to Genga Nilayam Homestay.\n\n`;
+          msg += `We're sorry to say we're unable to confirm your booking for ${propertyName}`;
+          if(req && req.checkin && req.checkout){
+            msg += ` from ${fmtDate(req.checkin)} to ${fmtDate(req.checkout)}`;
+          }
+          msg += ` at this time.\n\n`;
+          msg += `We hope to host you another time — feel free to check back for different dates!`;
+          window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        try{
+          await db.collection('genga_nilayam').doc(reqId).delete();
+          await loadPendingRequests();
+        }catch(e){ alert('Could not reject. Please try again.'); }
       });
     });
   }catch(e){
