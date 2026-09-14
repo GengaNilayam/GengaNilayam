@@ -651,6 +651,143 @@ function closeGuestCalendar(){
   document.getElementById('cal-overlay').classList.remove('show');
 }
 
+// Best-effort Tamil muhurtham dates for the rest of 2026, cross-referenced
+// across multiple calendar sources. Worth double-checking against a local
+// panchangam before relying on it - this is the one place to correct it.
+const MUHURTHAM_DATES = {
+  '2026-09-17': 'valarpirai',
+  '2026-10-25': 'valarpirai',
+  '2026-10-30': 'theipirai',
+  '2026-11-01': 'theipirai',
+  '2026-11-11': 'valarpirai',
+  '2026-11-13': 'valarpirai',
+  '2026-11-15': 'valarpirai',
+  '2026-11-16': 'valarpirai',
+  '2026-11-20': 'valarpirai',
+  '2026-12-04': 'theipirai',
+  '2026-12-06': 'theipirai',
+  '2026-12-10': 'valarpirai',
+  '2026-12-13': 'valarpirai',
+  '2026-12-14': 'valarpirai',
+
+  // 2027, from wikiwed.com's Tamil Wedding Muhurtham Calendar 2027,
+  // cross-checked against tamildailycalendar.com where months overlapped.
+  '2027-01-20': 'valarpirai',
+  '2027-01-28': 'valarpirai',
+  '2027-02-08': 'theipirai',
+  '2027-02-10': 'theipirai',
+  '2027-02-11': 'theipirai',
+  '2027-02-12': 'theipirai',
+  '2027-02-18': 'theipirai',
+  '2027-02-25': 'valarpirai',
+  '2027-02-26': 'valarpirai',
+  '2027-03-04': 'theipirai',
+  '2027-03-10': 'theipirai',
+  '2027-03-11': 'theipirai',
+  '2027-03-12': 'theipirai',
+  '2027-03-15': 'theipirai',
+  '2027-03-17': 'valarpirai',
+  '2027-03-18': 'valarpirai',
+  '2027-03-24': 'valarpirai',
+  '2027-03-25': 'valarpirai',
+  '2027-04-01': 'theipirai',
+  '2027-04-04': 'theipirai',
+  '2027-04-08': 'theipirai',
+  '2027-04-11': 'valarpirai',
+  '2027-04-12': 'valarpirai',
+  '2027-04-18': 'valarpirai',
+  '2027-04-23': 'valarpirai',
+  '2027-04-25': 'valarpirai',
+  '2027-04-26': 'valarpirai',
+  '2027-05-03': 'theipirai',
+  '2027-05-09': 'theipirai',
+  '2027-05-12': 'theipirai',
+  '2027-05-16': 'valarpirai',
+  '2027-05-17': 'valarpirai',
+  '2027-05-23': 'valarpirai',
+  '2027-05-26': 'valarpirai',
+  '2027-05-27': 'valarpirai',
+  '2027-05-28': 'valarpirai',
+  '2027-06-07': 'theipirai',
+  '2027-06-10': 'theipirai',
+  '2027-06-13': 'valarpirai',
+  '2027-06-14': 'valarpirai',
+  '2027-06-23': 'valarpirai',
+  '2027-06-24': 'valarpirai',
+  '2027-06-25': 'valarpirai',
+  '2027-07-05': 'theipirai',
+  '2027-07-07': 'theipirai',
+  '2027-07-09': 'theipirai',
+  '2027-07-14': 'theipirai',
+  '2027-07-16': 'theipirai',
+  '2027-08-20': 'valarpirai',
+  '2027-08-22': 'theipirai',
+  '2027-08-23': 'theipirai',
+  '2027-08-27': 'theipirai',
+  '2027-08-29': 'theipirai',
+  '2027-09-03': 'theipirai',
+  '2027-09-05': 'valarpirai',
+  '2027-09-12': 'valarpirai',
+  '2027-09-13': 'valarpirai',
+  '2027-10-20': 'theipirai',
+  '2027-10-22': 'theipirai',
+  '2027-10-27': 'theipirai',
+  '2027-11-01': 'theipirai',
+  '2027-11-05': 'valarpirai',
+  '2027-11-08': 'valarpirai',
+  '2027-11-10': 'valarpirai',
+  '2027-11-11': 'valarpirai',
+  '2027-11-12': 'valarpirai',
+  '2027-11-15': 'theipirai',
+  '2027-11-18': 'theipirai',
+  '2027-11-25': 'theipirai',
+  '2027-12-02': 'theipirai',
+  '2027-12-05': 'theipirai',
+  '2027-12-08': 'valarpirai',
+  '2027-12-09': 'valarpirai',
+  '2027-12-10': 'valarpirai',
+};
+
+// Bookings peak the evening before a muhurtham date. Valarpirai always
+// counts; Theipirai only counts if the muhurtham date itself is a weekend.
+function checkMuhurthamPeak(checkinDateStr, checkinTimeStr, property, guestCount){
+  if(!checkinDateStr) return { isPeak: false };
+
+  // Case 1: check-in the evening before a muhurtham date.
+  const eve = new Date(checkinDateStr + 'T00:00:00');
+  eve.setDate(eve.getDate() + 1);
+  const eveKey = toKey(eve.getFullYear(), eve.getMonth(), eve.getDate());
+
+  let muhurthamKey = null, type = null;
+  if(MUHURTHAM_DATES[eveKey]){
+    muhurthamKey = eveKey;
+    type = MUHURTHAM_DATES[eveKey];
+  } else if(MUHURTHAM_DATES[checkinDateStr] && checkinTimeStr && checkinTimeStr < '10:00'){
+    // Case 2: early-morning check-in on the muhurtham date itself.
+    muhurthamKey = checkinDateStr;
+    type = MUHURTHAM_DATES[checkinDateStr];
+  }
+  if(!type) return { isPeak: false };
+
+  const dow = new Date(muhurthamKey + 'T00:00:00').getDay();
+  const isWeekend = (dow === 0 || dow === 6);
+  if(type === 'theipirai' && !isWeekend) return { isPeak: false };
+
+  let minGuests, flatRate;
+  if(property === 'both'){ minGuests = 8; flatRate = 5000 + 6250; }
+  else if(property === 'home2'){ minGuests = 7; flatRate = 6250; }
+  else { minGuests = 8; flatRate = 5000; }
+
+  return {
+    isPeak: true,
+    type,
+    muhurthamDate: muhurthamKey,
+    underMinimum: guestCount < minGuests,
+    minGuests,
+    flatRate
+  };
+}
+
 function renderCalendarGrid(gridEl, titleEl, year, month, opts){
   const first = new Date(year, month, 1);
   const startDow = first.getDay();
@@ -675,8 +812,13 @@ function renderCalendarGrid(gridEl, titleEl, year, month, opts){
     if(opts.selEnd && key === opts.selEnd) cls += ' selected';
     if(opts.selStart && opts.selEnd && key > opts.selStart && key < opts.selEnd) cls += ' in-range';
 
+    const muhurtham = MUHURTHAM_DATES[key];
+    const style = muhurtham === 'valarpirai' ? ' style="box-shadow:inset 0 0 0 3px #fb923c;"'
+                : muhurtham === 'theipirai' ? ' style="box-shadow:inset 0 0 0 3px #facc15;"'
+                : '';
+
     const clickable = !isPast && !isBlocked;
-    html += `<button type="button" class="${cls}" data-key="${key}" ${clickable?'':'disabled'}>${d}</button>`;
+    html += `<button type="button" class="${cls}" data-key="${key}"${style} ${clickable?'':'disabled'}>${d}</button>`;
   }
   gridEl.innerHTML = html;
 }
@@ -767,12 +909,22 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
+  const peak = checkMuhurthamPeak(checkin, checkinTime, currentProperty, Number(guests));
+  if(peak.isPeak && peak.underMinimum){
+    const label = peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai';
+    const whenPhrase = peak.muhurthamDate === checkin ? 'an early check-in on' : 'the evening before';
+    const proceed = confirm(`High demand day — this is ${whenPhrase} a ${label} muhurtham. Under ${peak.minGuests} guests, the flat rate is Rs. ${peak.flatRate} for the whole home. Continue with this booking?`);
+    if(!proceed){ e.preventDefault(); return; }
+  }
+
   let text = `Hi, I'd like to book Genga Nilayam (${PROPERTIES[currentProperty].name}).\n\n`;
   text += `Name: ${name}\n`;
   if(phone) text += `Phone: ${phone}\n`;
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Guests: ${guests}\n`;
+  text += `Muhurtham booking: ${peak.isPeak ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
+  if(peak.isPeak && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
   if(message) text += `Message: ${message}\n`;
 
   // Point this same link at WhatsApp and let the browser's native click-follow
@@ -789,6 +941,8 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: currentProperty, propertyName: PROPERTIES[currentProperty].name,
     checkin, checkout, checkinTime, checkoutTime, guests, message,
+    isMuhurtham: peak.isPeak, muhurthamType: peak.isPeak ? peak.type : null,
+    flatRateApplied: (peak.isPeak && peak.underMinimum) ? peak.flatRate : null,
     status: 'pending', submittedAt: new Date().toISOString()
   }).catch(()=>{});
 });
@@ -807,12 +961,22 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
+  const peak = checkMuhurthamPeak(checkin, checkinTime, 'both', Number(guests));
+  if(peak.isPeak && peak.underMinimum){
+    const label = peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai';
+    const whenPhrase = peak.muhurthamDate === checkin ? 'an early check-in on' : 'the evening before';
+    const proceed = confirm(`High demand day — this is ${whenPhrase} a ${label} muhurtham. Under ${peak.minGuests} guests combined, the flat rate is Rs. ${peak.flatRate} for both homes. Continue with this booking?`);
+    if(!proceed){ e.preventDefault(); return; }
+  }
+
   let text = `Hi, I'd like to book Genga Nilayam — BOTH homes (${bothName}).\n\n`;
   text += `Name: ${name}\n`;
   if(phone) text += `Phone: ${phone}\n`;
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Guests (total across both homes): ${guests}\n`;
+  text += `Muhurtham booking: ${peak.isPeak ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
+  if(peak.isPeak && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
   if(message) text += `Message: ${message}\n`;
 
   e.currentTarget.href = `https://api.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${encodeURIComponent(text)}`;
@@ -825,6 +989,8 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: 'both', propertyName: bothName,
     checkin, checkout, checkinTime, checkoutTime, guests, message,
+    isMuhurtham: peak.isPeak, muhurthamType: peak.isPeak ? peak.type : null,
+    flatRateApplied: (peak.isPeak && peak.underMinimum) ? peak.flatRate : null,
     status: 'pending', submittedAt: new Date().toISOString()
   }).catch(()=>{});
 });
