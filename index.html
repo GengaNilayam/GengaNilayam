@@ -614,6 +614,7 @@
       </div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" id="q-guests"></div>
       <div class="field"><label>Total amount (Rs.)</label><input type="number" id="q-total"></div>
+      <div class="field"><label>Advance paid (Rs.)</label><input type="number" id="q-advance" placeholder="0"></div>
       <div class="cal-hint" id="q-error" style="color:var(--wood);"></div>
       <div class="cal-actions" style="margin-top:14px;">
         <button class="btn btn-ghost" id="q-back" style="padding:10px 16px;">Back</button>
@@ -635,6 +636,7 @@
       <div class="field"><label>Guests</label><input id="inv-guests" readonly></div>
       <div class="field"><label>Price per night (Rs.)</label><input type="number" id="inv-rate" placeholder="e.g. 2500"></div>
       <div class="field"><label>Total amount (Rs.)</label><input type="number" id="inv-total" placeholder="auto-fills from rate, editable"></div>
+      <div class="field"><label>Advance paid (Rs.)</label><input type="number" id="inv-advance" placeholder="0"></div>
       <div class="cal-hint" id="inv-error" style="color:var(--wood);"></div>
       <div class="cal-actions" style="margin-top:14px;">
         <button class="btn btn-ghost" id="inv-back" style="padding:10px 16px;">Back</button>
@@ -1126,6 +1128,7 @@ function openInvoiceView(req){
   document.getElementById('inv-nights').value = nights;
   document.getElementById('inv-rate').value = '';
   document.getElementById('inv-total').value = '';
+  document.getElementById('inv-advance').value = '';
   document.getElementById('inv-error').textContent = '';
   document.getElementById('inv-links').style.display = 'none';
 }
@@ -1146,6 +1149,8 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
   const name = document.getElementById('inv-name').value.trim();
   const phoneRaw = document.getElementById('inv-phone').value.trim();
   const total = Number(document.getElementById('inv-total').value);
+  const advance = Number(document.getElementById('inv-advance').value) || 0;
+  const balance = total - advance;
   const rate = Number(document.getElementById('inv-rate').value);
   const nights = Number(document.getElementById('inv-nights').value);
   const property = document.getElementById('inv-property').value;
@@ -1198,6 +1203,16 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     doc.setFontSize(14);
     doc.text('Total Amount:', 14, y);
     doc.text('Rs. ' + total, 150, y);
+    if(advance > 0){
+      y += 9;
+      doc.setFontSize(11);
+      doc.text('Advance Paid:', 14, y);
+      doc.text('Rs. ' + advance, 150, y);
+      y += 8;
+      doc.setFontSize(13);
+      doc.text('Balance Due:', 14, y);
+      doc.text('Rs. ' + balance, 150, y);
+    }
 
     y += 20;
     doc.setFontSize(9);
@@ -1211,7 +1226,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
 
   try{
     if(currentInvoiceReqId){
-      await db.collection('genga_nilayam').doc(currentInvoiceReqId).update({ status: 'invoiced', invoiceNo, total, invoicedAt: new Date().toISOString() });
+      await db.collection('genga_nilayam').doc(currentInvoiceReqId).update({ status: 'invoiced', invoiceNo, total, advance, balance, invoicedAt: new Date().toISOString() });
     }
   }catch(e){ /* non-fatal */ }
 
@@ -1235,7 +1250,12 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     msg += `Guests: ${guests}\n`;
     msg += `Nights: ${nights}\n`;
     if(rate) msg += `Rate per night: Rs. ${rate}\n`;
-    msg += `\n*Total Amount: Rs. ${total}*\n\n`;
+    msg += `\n*Total Amount: Rs. ${total}*\n`;
+    if(advance > 0){
+      msg += `Advance Paid: Rs. ${advance}\n`;
+      msg += `*Balance Due: Rs. ${balance}*\n`;
+    }
+    msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
     waLink.style.display = '';
@@ -1322,7 +1342,7 @@ async function generateRevenueReport(){
       const amt = Number(data.total) || 0;
       total += amt;
       count += 1;
-      items.push({ id: doc.id, name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt });
+      items.push({ id: doc.id, name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt, advance: Number(data.advance) || 0, balance: data.balance != null ? Number(data.balance) : amt });
     });
     items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
 
@@ -1334,6 +1354,7 @@ async function generateRevenueReport(){
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; Rs. ${r.amount.toLocaleString('en-IN')}</div>
+        ${r.advance > 0 ? `<div style="font-size:13px;color:var(--ink-soft);">Advance: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>` : ''}
         <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="margin-top:8px;background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
       </div>
     `).join('');
@@ -1375,6 +1396,7 @@ document.getElementById('admin-quick-btn').addEventListener('click', ()=>{
   document.getElementById('q-checkout-time').value = '12:00';
   document.getElementById('q-guests').value = '';
   document.getElementById('q-total').value = '';
+  document.getElementById('q-advance').value = '';
   document.getElementById('q-error').textContent = '';
   document.getElementById('q-links').style.display = 'none';
 });
@@ -1457,6 +1479,8 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
   const checkoutTime = document.getElementById('q-checkout-time').value;
   const guests = document.getElementById('q-guests').value;
   const total = Number(document.getElementById('q-total').value);
+  const advance = Number(document.getElementById('q-advance').value) || 0;
+  const balance = total - advance;
 
   if(!name || !checkinDate || !checkoutDate || !total){
     document.getElementById('q-error').textContent = 'Please fill in guest name, both dates, and a total amount.';
@@ -1507,6 +1531,16 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
     doc.setFontSize(14);
     doc.text('Total Amount:', 14, y);
     doc.text('Rs. ' + total, 150, y);
+    if(advance > 0){
+      y += 9;
+      doc.setFontSize(11);
+      doc.text('Advance Paid:', 14, y);
+      doc.text('Rs. ' + advance, 150, y);
+      y += 8;
+      doc.setFontSize(13);
+      doc.text('Balance Due:', 14, y);
+      doc.text('Rs. ' + balance, 150, y);
+    }
 
     y += 20;
     doc.setFontSize(9);
@@ -1524,7 +1558,7 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
   const reqData = {
     name, phone: phoneRaw, property, propertyName,
     checkin: checkinDate, checkout: checkoutDate, checkinTime, checkoutTime, guests,
-    status: 'invoiced', invoiceNo, total, invoicedAt: new Date().toISOString(),
+    status: 'invoiced', invoiceNo, total, advance, balance, invoicedAt: new Date().toISOString(),
     submittedAt: new Date().toISOString()
   };
   try{
@@ -1548,7 +1582,12 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
     msg += `Check-out: ${checkoutDisplay}\n`;
     if(guests) msg += `Guests: ${guests}\n`;
     msg += `Nights: ${nights}\n`;
-    msg += `\n*Total Amount: Rs. ${total}*\n\n`;
+    msg += `\n*Total Amount: Rs. ${total}*\n`;
+    if(advance > 0){
+      msg += `Advance Paid: Rs. ${advance}\n`;
+      msg += `*Balance Due: Rs. ${balance}*\n`;
+    }
+    msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
     waLink.style.display = '';
