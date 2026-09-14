@@ -464,8 +464,8 @@
       <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4 PM check-in → 4 PM check-out the next day).</div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" max="7" id="f-guests" value="2"></div>
       <div class="field"><label>Message (optional)</label><textarea id="f-message" placeholder="Anything else we should know?"></textarea></div>
-      <a class="submit-btn" id="submit-btn" href="#" style="display:block;">Send booking request on WhatsApp</a>
-      <a id="submit-both-btn" href="#" style="display:block;text-align:center;margin-top:10px;padding:12px;border-radius:10px;border:2px solid var(--wood);color:var(--wood);font-weight:600;font-size:14px;">Book both Home#1 &amp; Home#2</a>
+      <a class="submit-btn" id="submit-btn" href="#" style="display:block;">Booking request for Home#1</a>
+      <a id="submit-both-btn" href="#" style="display:block;text-align:center;margin-top:10px;padding:12px;border-radius:10px;border:2px solid var(--wood);color:var(--wood);font-weight:600;font-size:14px;">Booking request for Home#1 &amp; Home#2</a>
       <div class="hint">We'll reply on WhatsApp to confirm your dates and rate.</div>
     </div>
   </div>
@@ -630,6 +630,8 @@ document.querySelectorAll('.prop-tab').forEach(tab => {
     }
     const bookingNote = document.getElementById('booking-property-note');
     if(bookingNote) bookingNote.textContent = "You're booking: " + PROPERTIES[prop].name;
+    const submitBtn = document.getElementById('submit-btn');
+    if(submitBtn) submitBtn.textContent = "Booking request for " + (prop === 'home1' ? 'Home#1' : 'Home#2');
     await loadBlockedDates();
   });
 });
