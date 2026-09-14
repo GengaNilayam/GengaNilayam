@@ -587,7 +587,7 @@ async function loadPendingRequests(){
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.guests || '?'} guests</div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
-          <button type="button" class="admin-reject-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;font-weight:600;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;">Reject</button>
+          <a href="#" class="admin-reject-btn" data-req-id="${r.id}" style="display:inline-block;padding:8px 14px;font-size:13px;font-weight:600;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;text-decoration:none;">Reject</a>
         </div>
       </div>
     `).join('');
@@ -598,12 +598,15 @@ async function loadPendingRequests(){
       });
     });
     listEl.querySelectorAll('.admin-reject-btn').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(!confirm('Reject this booking request? No dates are held for it, so this just removes it from the list.')) return;
+      btn.addEventListener('click', function(e){
+        if(!confirm('Reject this booking request? No dates are held for it, so this just removes it from the list.')){
+          e.preventDefault();
+          return;
+        }
         const reqId = btn.getAttribute('data-req-id');
         const req = currentInvoiceReqs.find(r => r.id === reqId);
-
         const guestNumber = normalizePhone((req && req.phone) || '');
+
         if(guestNumber){
           const name = (req && req.name) || 'there';
           const propertyName = (req && (req.propertyName || req.property)) || 'Genga Nilayam Homestay';
@@ -614,13 +617,15 @@ async function loadPendingRequests(){
           }
           msg += ` at this time.\n\n`;
           msg += `We hope to host you another time — feel free to check back for different dates!`;
-          window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+          e.currentTarget.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+          e.currentTarget.target = '_blank';
+        } else {
+          e.preventDefault();
         }
 
-        try{
-          await db.collection('genga_nilayam').doc(reqId).delete();
-          await loadPendingRequests();
-        }catch(e){ alert('Could not reject. Please try again.'); }
+        db.collection('genga_nilayam').doc(reqId).delete().then(loadPendingRequests).catch(()=>{
+          alert('Could not remove the request. Please try again.');
+        });
       });
     });
   }catch(e){
@@ -808,7 +813,7 @@ async function promptUpdateAdvance(reqId, currentAdvance, total, refreshFn){
 // picking up whatever advance/balance is currently on record. No Firestore
 // writes here, so nothing to await - the download and WhatsApp open happen
 // immediately in the same tap.
-function regenerateInvoicePDF(r){
+function regenerateInvoicePDF(r, e){
   const invoiceNo = r.invoiceNo || ('GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900));
   const issuedDate = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
   const total = Number(r.total) || 0;
@@ -894,7 +899,14 @@ function regenerateInvoicePDF(r){
     }
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
-    window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+    if(e){
+      e.currentTarget.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+      e.currentTarget.target = '_blank';
+    } else {
+      window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+  } else if(e){
+    e.preventDefault();
   }
 }
 
@@ -925,15 +937,16 @@ async function generateReport(){
         ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-regen-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Regenerate invoice</button>` : ''}
+          ${r.status === 'invoiced' ? `<a href="#" class="report-regen-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Regenerate invoice</a>` : ''}
           <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
         </div>
       </div>
     `).join('');
     listEl.querySelectorAll('.report-regen-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+      btn.addEventListener('click', function(e){
         const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) regenerateInvoicePDF(item);
+        if(item) regenerateInvoicePDF(item, e);
+        else e.preventDefault();
       });
     });
     listEl.querySelectorAll('.report-advance-btn').forEach(btn=>{
