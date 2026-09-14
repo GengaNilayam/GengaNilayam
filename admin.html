@@ -526,6 +526,21 @@ function normalizePhone(raw){
   return digits;
 }
 
+const UPI_ID = 'genganilayam.vnr@okaxis';
+const UPI_PAYEE_NAME = 'Genga Nilayam Homestay';
+
+// Same-day booking: no advance, ask for the full amount. Otherwise default
+// to 50% as the advance - this is only ever a pre-filled suggestion, the
+// guest's UPI app lets them change it before paying.
+function computePaymentAmount(total, checkinDateStr){
+  if(checkinDateStr && checkinDateStr === todayKey()) return total;
+  return Math.round(total * 0.5);
+}
+
+function buildUpiLink(amount, note){
+  return `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(UPI_PAYEE_NAME)}&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+}
+
 let currentInvoiceReqId = null;
 let currentInvoiceReq = null;
 let currentInvoiceReqs = [];
@@ -685,6 +700,8 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
 
   const invoiceNo = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900);
   const issuedDate = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+  const paymentAmount = computePaymentAmount(total, currentInvoiceReq ? currentInvoiceReq.checkin : null);
+  const upiLink = buildUpiLink(paymentAmount, 'Genga Nilayam ' + invoiceNo);
 
   try{
     const { jsPDF } = window.jspdf;
@@ -734,7 +751,13 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
       doc.text('Rs. ' + balance, 150, y);
     }
 
-    y += 20;
+    y += 14;
+    doc.setFontSize(11);
+    doc.setTextColor(8, 145, 168);
+    doc.textWithLink(`Pay Rs. ${paymentAmount} now via GPay/UPI`, 14, y, { url: upiLink });
+    doc.setTextColor(0, 0, 0);
+
+    y += 16;
     doc.setFontSize(9);
     doc.text('Thank you for booking with Genga Nilayam Homestay!', 14, y);
 
@@ -750,8 +773,9 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     }
   }catch(e){ /* non-fatal */ }
 
-  // Only now, with the booking confirmed, do the dates actually get blocked.
-  if(currentInvoiceReq){
+  // Dates are held only once payment is actually on record - either an
+  // advance was entered here, or it gets recorded later via "Update advance".
+  if(currentInvoiceReq && advance > 0){
     await blockDatesForRequest(currentInvoiceReq);
   }
 
@@ -777,6 +801,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
       msg += `Advance Paid: Rs. ${advance}\n`;
       msg += `*Balance Due: Rs. ${balance}*\n`;
     }
+    msg += `\nPay Rs. ${paymentAmount} now via GPay/UPI:\n${upiLink}\n`;
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
@@ -803,6 +828,13 @@ async function promptUpdateAdvance(reqId, currentAdvance, total, refreshFn){
   const newBalance = total - newAdvance;
   try{
     await db.collection('genga_nilayam').doc(reqId).update({ advance: newAdvance, balance: newBalance });
+    // This is the actual confirmation point now: the first time a real
+    // payment is on record, block the date(s). Blocking again on later
+    // top-up updates is harmless, since the dates are already held.
+    if(newAdvance > 0){
+      const doc = await db.collection('genga_nilayam').doc(reqId).get();
+      if(doc.exists) await blockDatesForRequest({ id: reqId, ...doc.data() });
+    }
     if(refreshFn) await refreshFn();
   }catch(e){
     alert('Could not update. Please try again.');
@@ -823,6 +855,8 @@ function regenerateInvoicePDF(r, e){
   const checkinDisplay = fmtDate(r.checkin) + (r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : '');
   const checkoutDisplay = fmtDate(r.checkout) + (r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : '');
   const nights = Math.max(1, Math.round((new Date(r.checkout+'T00:00:00') - new Date(r.checkin+'T00:00:00')) / 86400000));
+  const paymentAmount = advance > 0 ? balance : computePaymentAmount(total, r.checkin);
+  const upiLink = buildUpiLink(paymentAmount, 'Genga Nilayam ' + invoiceNo);
 
   try{
     const { jsPDF } = window.jspdf;
@@ -871,7 +905,16 @@ function regenerateInvoicePDF(r, e){
       doc.text('Rs. ' + balance, 150, y);
     }
 
-    y += 20;
+    if(paymentAmount > 0){
+      y += 14;
+      doc.setFontSize(11);
+      doc.setTextColor(8, 145, 168);
+      doc.textWithLink(`Pay Rs. ${paymentAmount} now via GPay/UPI`, 14, y, { url: upiLink });
+      doc.setTextColor(0, 0, 0);
+      y += 6;
+    }
+
+    y += 16;
     doc.setFontSize(9);
     doc.text('Thank you for booking with Genga Nilayam Homestay!', 14, y);
 
@@ -896,6 +939,9 @@ function regenerateInvoicePDF(r, e){
     if(advance > 0){
       msg += `Advance Paid: Rs. ${advance}\n`;
       msg += `*Balance Due: Rs. ${balance}*\n`;
+    }
+    if(paymentAmount > 0){
+      msg += `\nPay Rs. ${paymentAmount} now via GPay/UPI:\n${upiLink}\n`;
     }
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
@@ -1168,6 +1214,8 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
 
   const invoiceNo = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900);
   const issuedDate = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+  const paymentAmount = computePaymentAmount(total, checkinDate);
+  const upiLink = buildUpiLink(paymentAmount, 'Genga Nilayam ' + invoiceNo);
 
   try{
     const { jsPDF } = window.jspdf;
@@ -1216,7 +1264,13 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
       doc.text('Rs. ' + balance, 150, y);
     }
 
-    y += 20;
+    y += 14;
+    doc.setFontSize(11);
+    doc.setTextColor(8, 145, 168);
+    doc.textWithLink(`Pay Rs. ${paymentAmount} now via GPay/UPI`, 14, y, { url: upiLink });
+    doc.setTextColor(0, 0, 0);
+
+    y += 16;
     doc.setFontSize(9);
     doc.text('Thank you for booking with Genga Nilayam Homestay!', 14, y);
 
@@ -1239,8 +1293,11 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
     await db.collection('genga_nilayam').doc(reqId).set(reqData);
   }catch(e){ /* non-fatal: invoice still goes out even if the record fails to save */ }
 
-  // Block the calendar(s) now that this is confirmed — handles 'both' too.
-  await blockDatesForRequest(reqData);
+  // Dates are held only once payment is actually on record - either an
+  // advance was entered here, or it gets recorded later via "Update advance".
+  if(advance > 0){
+    await blockDatesForRequest(reqData);
+  }
 
   const qPdfLink = document.getElementById('q-pdf-link');
   qPdfLink.href = pdfDataUri;
@@ -1263,6 +1320,7 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
       msg += `Advance Paid: Rs. ${advance}\n`;
       msg += `*Balance Due: Rs. ${balance}*\n`;
     }
+    msg += `\nPay Rs. ${paymentAmount} now via GPay/UPI:\n${upiLink}\n`;
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
