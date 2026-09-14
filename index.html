@@ -811,6 +811,11 @@ document.getElementById('submit-btn').addEventListener('click', async ()=>{
   if(!name){ alert('Please enter your name'); return; }
   if(!checkin || !checkout){ alert('Please select your check-in and check-out dates'); return; }
 
+  // Open the tab synchronously, in direct response to the tap, before any
+  // awaits below — iOS Safari silently blocks window.open() once it happens
+  // after an async gap, even by a few milliseconds.
+  const waWindow = window.open('', '_blank');
+
   let text = `Hi, I'd like to book Genga Nilayam (${PROPERTIES[currentProperty].name}).\n\n`;
   text += `Name: ${name}\n`;
   if(phone) text += `Phone: ${phone}\n`;
@@ -845,7 +850,7 @@ document.getElementById('submit-btn').addEventListener('click', async ()=>{
   }catch(e){ /* non-fatal: the WhatsApp message below still goes through */ }
 
   const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
-  window.open(url, '_blank');
+  if(waWindow){ waWindow.location.href = url; } else { window.location.href = url; }
 });
 
 /* ---------- Admin panel ---------- */
@@ -1017,6 +1022,11 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     return;
   }
 
+  // Open the tab synchronously, right after validation, before any awaits —
+  // iOS Safari blocks window.open() once it happens after an async gap.
+  const guestNumber = normalizePhone(phoneRaw);
+  const waWindow = guestNumber ? window.open('', '_blank') : null;
+
   const invoiceNo = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900);
   const issuedDate = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
 
@@ -1075,8 +1085,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     }
   }catch(e){ /* non-fatal */ }
 
-  const guestNumber = normalizePhone(phoneRaw);
-  if(guestNumber){
+  if(guestNumber && waWindow){
     let msg = `*Genga Nilayam Homestay*\nVirudhunagar, Tamil Nadu\n\n`;
     msg += `Invoice: ${invoiceNo}\nDate: ${issuedDate}\n\n`;
     msg += `Billed to: ${name}\n`;
@@ -1089,7 +1098,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     if(rate) msg += `Rate per night: Rs. ${rate}\n`;
     msg += `\n*Total Amount: Rs. ${total}*\n\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
-    window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+    waWindow.location.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
   }
 
   document.getElementById('admin-invoice-view').style.display = 'none';
