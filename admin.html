@@ -623,7 +623,7 @@ function cancelBooking(r, e){
     }
     msg += ` has been cancelled.\n\n`;
     msg += `If you have any questions, please feel free to reach out to us. We hope to host you another time.`;
-    e.currentTarget.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+    e.currentTarget.href = `https://api.whatsapp.com/send?phone=${guestNumber}&text=${encodeURIComponent(msg)}`;
     e.currentTarget.target = '_blank';
   } else {
     e.preventDefault();
@@ -689,7 +689,7 @@ async function loadPendingRequests(){
           }
           msg += ` at this time.\n\n`;
           msg += `We hope to host you another time — feel free to check back for different dates!`;
-          e.currentTarget.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+          e.currentTarget.href = `https://api.whatsapp.com/send?phone=${guestNumber}&text=${encodeURIComponent(msg)}`;
           e.currentTarget.target = '_blank';
         } else {
           e.preventDefault();
@@ -872,7 +872,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     msg += `No Google Pay? Pay any UPI app to: ${UPI_ID}\n`;
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
-    waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+    waLink.href = `https://api.whatsapp.com/send?phone=${guestNumber}&text=${encodeURIComponent(msg)}`;
     waLink.style.display = '';
   } else {
     waLink.style.display = 'none';
@@ -1025,10 +1025,10 @@ function regenerateInvoicePDF(r, e){
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     if(e){
-      e.currentTarget.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+      e.currentTarget.href = `https://api.whatsapp.com/send?phone=${guestNumber}&text=${encodeURIComponent(msg)}`;
       e.currentTarget.target = '_blank';
     } else {
-      window.open(`https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+      window.open(`https://api.whatsapp.com/send?phone=${guestNumber}&text=${encodeURIComponent(msg)}`, '_blank');
     }
   } else if(e){
     e.preventDefault();
@@ -1421,7 +1421,7 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
     msg += `No Google Pay? Pay any UPI app to: ${UPI_ID}\n`;
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
-    waLink.href = `https://wa.me/${guestNumber}?text=${encodeURIComponent(msg)}`;
+    waLink.href = `https://api.whatsapp.com/send?phone=${guestNumber}&text=${encodeURIComponent(msg)}`;
     waLink.style.display = '';
   } else {
     waLink.style.display = 'none';

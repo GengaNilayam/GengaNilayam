@@ -461,7 +461,7 @@
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <a class="btn" style="background:#fff;color:var(--deep-2);border:1px solid var(--line);" href="https://www.google.com/maps/search/?api=1&query=Genga+Nilayam+Virudhunagar" target="_blank">View on Google Maps</a>
-        <a class="btn btn-primary" href="https://wa.me/917397585569" target="_blank">Message us on WhatsApp</a>
+        <a class="btn btn-primary" href="https://api.whatsapp.com/send?phone=917397585569" target="_blank">Message us on WhatsApp</a>
       </div>
     </div>
   </div>
@@ -778,7 +778,7 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   // Point this same link at WhatsApp and let the browser's native click-follow
   // handle the navigation — no window.open(), so no popup-blocker involved at
   // all, on any browser.
-  e.currentTarget.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+  e.currentTarget.href = `https://api.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${encodeURIComponent(text)}`;
   e.currentTarget.target = '_blank';
 
   // Log the request only — dates are no longer blocked at submission time.
@@ -815,7 +815,7 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   text += `Guests (total across both homes): ${guests}\n`;
   if(message) text += `Message: ${message}\n`;
 
-  e.currentTarget.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+  e.currentTarget.href = `https://api.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${encodeURIComponent(text)}`;
   e.currentTarget.target = '_blank';
 
   // property: 'both' is handled specially downstream — it shows up for admins
