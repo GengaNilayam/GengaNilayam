@@ -478,15 +478,19 @@
     <div class="booking-panel">
       <div class="field"><label>Your name</label><input id="f-name" placeholder="e.g. Ravi Kumar"></div>
       <div class="field"><label>WhatsApp number</label><input id="f-phone" placeholder="98470 12233"></div>
-      <div class="field">
-        <label>Dates</label>
-        <input id="f-dates-display" readonly placeholder="Select check-in and check-out dates" style="cursor:pointer;">
+      <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;">
+        <label style="font-weight:600;">Check-in</label>
+        <input id="f-checkin-display" readonly placeholder="Select check-in date" style="cursor:pointer;margin-bottom:10px;">
         <input type="hidden" id="f-checkin">
-        <input type="hidden" id="f-checkout">
+        <label>Time</label>
+        <input type="time" id="f-checkin-time" value="12:00">
       </div>
-      <div class="field-row">
-        <div class="field"><label>Check-in time</label><input type="time" id="f-checkin-time" value="12:00"></div>
-        <div class="field"><label>Check-out time</label><input type="time" id="f-checkout-time" value="12:00"></div>
+      <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;">
+        <label style="font-weight:600;">Check-out</label>
+        <input id="f-checkout-display" readonly placeholder="Select check-out date" style="cursor:pointer;margin-bottom:10px;">
+        <input type="hidden" id="f-checkout">
+        <label>Time</label>
+        <input type="time" id="f-checkout-time" value="12:00">
       </div>
       <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4 PM check-in → 4 PM check-out the next day).</div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" max="10" id="f-guests" value="2"></div>
@@ -751,7 +755,7 @@ const MUHURTHAM_DATES = {
 // Bookings peak the evening before a muhurtham date. Valarpirai always
 // counts; Theipirai only counts if the muhurtham date itself is a weekend.
 function checkMuhurthamPeak(checkinDateStr, checkinTimeStr, property, guestCount){
-  if(!checkinDateStr) return { isPeak: false };
+  if(!checkinDateStr) return { isMuhurtham: false, pricingApplies: false };
 
   // Case 1: check-in the evening before a muhurtham date.
   const eve = new Date(checkinDateStr + 'T00:00:00');
@@ -767,11 +771,16 @@ function checkMuhurthamPeak(checkinDateStr, checkinTimeStr, property, guestCount
     muhurthamKey = checkinDateStr;
     type = MUHURTHAM_DATES[checkinDateStr];
   }
-  if(!type) return { isPeak: false };
+  if(!type) return { isMuhurtham: false, pricingApplies: false };
 
   const dow = new Date(muhurthamKey + 'T00:00:00').getDay();
   const isWeekend = (dow === 0 || dow === 6);
-  if(type === 'theipirai' && !isWeekend) return { isPeak: false };
+  // Valarpirai always triggers pricing; Theipirai only on a weekend muhurtham.
+  const pricingApplies = (type === 'valarpirai') || (type === 'theipirai' && isWeekend);
+
+  if(!pricingApplies){
+    return { isMuhurtham: true, pricingApplies: false, type, muhurthamDate: muhurthamKey };
+  }
 
   let minGuests, flatRate;
   if(property === 'both'){ minGuests = 8; flatRate = 5000 + 6250; }
@@ -779,7 +788,8 @@ function checkMuhurthamPeak(checkinDateStr, checkinTimeStr, property, guestCount
   else { minGuests = 8; flatRate = 5000; }
 
   return {
-    isPeak: true,
+    isMuhurtham: true,
+    pricingApplies: true,
     type,
     muhurthamDate: muhurthamKey,
     underMinimum: guestCount < minGuests,
@@ -812,13 +822,8 @@ function renderCalendarGrid(gridEl, titleEl, year, month, opts){
     if(opts.selEnd && key === opts.selEnd) cls += ' selected';
     if(opts.selStart && opts.selEnd && key > opts.selStart && key < opts.selEnd) cls += ' in-range';
 
-    const muhurtham = MUHURTHAM_DATES[key];
-    const style = muhurtham === 'valarpirai' ? ' style="box-shadow:inset 0 0 0 3px #fb923c;"'
-                : muhurtham === 'theipirai' ? ' style="box-shadow:inset 0 0 0 3px #facc15;"'
-                : '';
-
     const clickable = !isPast && !isBlocked;
-    html += `<button type="button" class="${cls}" data-key="${key}"${style} ${clickable?'':'disabled'}>${d}</button>`;
+    html += `<button type="button" class="${cls}" data-key="${key}" ${clickable?'':'disabled'}>${d}</button>`;
   }
   gridEl.innerHTML = html;
 }
@@ -873,7 +878,8 @@ function updateCalHint(){
   }
 }
 
-document.getElementById('f-dates-display').addEventListener('click', openGuestCalendar);
+document.getElementById('f-checkin-display').addEventListener('click', openGuestCalendar);
+document.getElementById('f-checkout-display').addEventListener('click', openGuestCalendar);
 document.getElementById('cal-cancel').addEventListener('click', closeGuestCalendar);
 document.getElementById('cal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='cal-overlay') closeGuestCalendar(); });
 document.getElementById('cal-prev').addEventListener('click', ()=>{
@@ -886,7 +892,8 @@ document.getElementById('cal-confirm').addEventListener('click', ()=>{
   if(!selectStart || !selectEnd) return;
   document.getElementById('f-checkin').value = selectStart;
   document.getElementById('f-checkout').value = selectEnd;
-  document.getElementById('f-dates-display').value = `${fmtDate(selectStart)}  →  ${fmtDate(selectEnd)}`;
+  document.getElementById('f-checkin-display').value = fmtDate(selectStart);
+  document.getElementById('f-checkout-display').value = fmtDate(selectEnd);
   closeGuestCalendar();
 });
 
@@ -910,10 +917,8 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
   const peak = checkMuhurthamPeak(checkin, checkinTime, currentProperty, Number(guests));
-  if(peak.isPeak && peak.underMinimum){
-    const label = peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai';
-    const whenPhrase = peak.muhurthamDate === checkin ? 'an early check-in on' : 'the evening before';
-    const proceed = confirm(`High demand day — this is ${whenPhrase} a ${label} muhurtham. Under ${peak.minGuests} guests, the flat rate is Rs. ${peak.flatRate} for the whole home. Continue with this booking?`);
+  if(peak.pricingApplies && peak.underMinimum){
+    const proceed = confirm(`High Demand day - Flat cost Rs. ${peak.flatRate} will apply.`);
     if(!proceed){ e.preventDefault(); return; }
   }
 
@@ -923,8 +928,8 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Guests: ${guests}\n`;
-  text += `Muhurtham booking: ${peak.isPeak ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
-  if(peak.isPeak && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
+  text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
+  if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
   if(message) text += `Message: ${message}\n`;
 
   // Point this same link at WhatsApp and let the browser's native click-follow
@@ -941,8 +946,8 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: currentProperty, propertyName: PROPERTIES[currentProperty].name,
     checkin, checkout, checkinTime, checkoutTime, guests, message,
-    isMuhurtham: peak.isPeak, muhurthamType: peak.isPeak ? peak.type : null,
-    flatRateApplied: (peak.isPeak && peak.underMinimum) ? peak.flatRate : null,
+    isMuhurtham: peak.isMuhurtham, muhurthamType: peak.isMuhurtham ? peak.type : null,
+    flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate : null,
     status: 'pending', submittedAt: new Date().toISOString()
   }).catch(()=>{});
 });
@@ -962,10 +967,8 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
   const peak = checkMuhurthamPeak(checkin, checkinTime, 'both', Number(guests));
-  if(peak.isPeak && peak.underMinimum){
-    const label = peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai';
-    const whenPhrase = peak.muhurthamDate === checkin ? 'an early check-in on' : 'the evening before';
-    const proceed = confirm(`High demand day — this is ${whenPhrase} a ${label} muhurtham. Under ${peak.minGuests} guests combined, the flat rate is Rs. ${peak.flatRate} for both homes. Continue with this booking?`);
+  if(peak.pricingApplies && peak.underMinimum){
+    const proceed = confirm(`High Demand day - Flat cost Rs. ${peak.flatRate} will apply.`);
     if(!proceed){ e.preventDefault(); return; }
   }
 
@@ -975,8 +978,8 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Guests (total across both homes): ${guests}\n`;
-  text += `Muhurtham booking: ${peak.isPeak ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
-  if(peak.isPeak && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
+  text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
+  if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
   if(message) text += `Message: ${message}\n`;
 
   e.currentTarget.href = `https://api.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${encodeURIComponent(text)}`;
@@ -989,8 +992,8 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: 'both', propertyName: bothName,
     checkin, checkout, checkinTime, checkoutTime, guests, message,
-    isMuhurtham: peak.isPeak, muhurthamType: peak.isPeak ? peak.type : null,
-    flatRateApplied: (peak.isPeak && peak.underMinimum) ? peak.flatRate : null,
+    isMuhurtham: peak.isMuhurtham, muhurthamType: peak.isMuhurtham ? peak.type : null,
+    flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate : null,
     status: 'pending', submittedAt: new Date().toISOString()
   }).catch(()=>{});
 });
