@@ -758,7 +758,7 @@ async function loadPendingRequests(){
     listEl.innerHTML = requests.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.guests || '?'} guests</div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
           <a href="#" class="admin-reject-btn" data-req-id="${r.id}" style="display:inline-block;padding:8px 14px;font-size:13px;font-weight:600;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;text-decoration:none;">Reject</a>

@@ -479,14 +479,14 @@
       <div class="field"><label>Your name</label><input id="f-name" placeholder="e.g. Ravi Kumar"></div>
       <div class="field"><label>WhatsApp number</label><input id="f-phone" placeholder="98470 12233"></div>
       <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;">
-        <label style="font-weight:600;">Check-in</label>
+        <label style="font-weight:600;">Check-in date</label>
         <input id="f-checkin-display" readonly placeholder="Select check-in date" style="cursor:pointer;margin-bottom:10px;">
         <input type="hidden" id="f-checkin">
         <label>Time</label>
         <input type="time" id="f-checkin-time" value="12:00">
       </div>
       <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;">
-        <label style="font-weight:600;">Check-out</label>
+        <label style="font-weight:600;">Check-out date</label>
         <input id="f-checkout-display" readonly placeholder="Select check-out date" style="cursor:pointer;margin-bottom:10px;">
         <input type="hidden" id="f-checkout">
         <label>Time</label>
@@ -643,11 +643,14 @@ async function saveBlockedDates(forProperty){
 let viewYear, viewMonth;
 let selectStart = null, selectEnd = null;
 
-function openGuestCalendar(){
+let calendarTarget = 'checkin';
+
+function openGuestCalendar(target){
+  calendarTarget = target;
   const t = new Date();
   viewYear = t.getFullYear(); viewMonth = t.getMonth();
-  selectStart = document.getElementById('f-checkin').value || null;
-  selectEnd = document.getElementById('f-checkout').value || null;
+  selectStart = document.getElementById(target === 'checkin' ? 'f-checkin' : 'f-checkout').value || null;
+  selectEnd = null;
   document.getElementById('cal-overlay').classList.add('show');
   renderGuestCalendar();
 }
@@ -833,30 +836,9 @@ function renderGuestCalendar(){
   const titleEl = document.getElementById('cal-title');
   renderCalendarGrid(gridEl, titleEl, viewYear, viewMonth, { selStart:selectStart, selEnd:selectEnd });
 
-  gridEl.querySelectorAll('.cal-day.avail, .cal-day.selected, .cal-day.in-range').forEach(btn=>{
+  gridEl.querySelectorAll('.cal-day.avail, .cal-day.selected').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      const key = btn.dataset.key;
-      if(!selectStart || (selectStart && selectEnd)){
-        selectStart = key; selectEnd = null;
-      } else if(key <= selectStart){
-        selectStart = key; selectEnd = null;
-      } else {
-        // check no blocked dates in between
-        let blocked = false;
-        let d = new Date(selectStart+'T00:00:00');
-        const end = new Date(key+'T00:00:00');
-        while(d < end){
-          const k = toKey(d.getFullYear(), d.getMonth(), d.getDate());
-          if(blockedDates.has(k)){ blocked = true; break; }
-          d.setDate(d.getDate()+1);
-        }
-        if(blocked){
-          alert('Some dates in that range are already unavailable. Please pick a different range.');
-          selectStart = key; selectEnd = null;
-        } else {
-          selectEnd = key;
-        }
-      }
+      selectStart = btn.dataset.key;
       renderGuestCalendar();
       updateCalHint();
     });
@@ -866,20 +848,18 @@ function renderGuestCalendar(){
 function updateCalHint(){
   const hint = document.getElementById('cal-hint');
   const confirmBtn = document.getElementById('cal-confirm');
-  if(selectStart && selectEnd){
-    hint.textContent = `${fmtDate(selectStart)} → ${fmtDate(selectEnd)}`;
+  const label = calendarTarget === 'checkin' ? 'check-in' : 'check-out';
+  if(selectStart){
+    hint.textContent = fmtDate(selectStart);
     confirmBtn.disabled = false;
-  } else if(selectStart){
-    hint.textContent = 'Now tap a check-out date';
-    confirmBtn.disabled = true;
   } else {
-    hint.textContent = 'Tap a check-in date to begin';
+    hint.textContent = `Tap a ${label} date`;
     confirmBtn.disabled = true;
   }
 }
 
-document.getElementById('f-checkin-display').addEventListener('click', openGuestCalendar);
-document.getElementById('f-checkout-display').addEventListener('click', openGuestCalendar);
+document.getElementById('f-checkin-display').addEventListener('click', ()=> openGuestCalendar('checkin'));
+document.getElementById('f-checkout-display').addEventListener('click', ()=> openGuestCalendar('checkout'));
 document.getElementById('cal-cancel').addEventListener('click', closeGuestCalendar);
 document.getElementById('cal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='cal-overlay') closeGuestCalendar(); });
 document.getElementById('cal-prev').addEventListener('click', ()=>{
@@ -889,11 +869,38 @@ document.getElementById('cal-next').addEventListener('click', ()=>{
   viewMonth++; if(viewMonth>11){ viewMonth=0; viewYear++; } renderGuestCalendar();
 });
 document.getElementById('cal-confirm').addEventListener('click', ()=>{
-  if(!selectStart || !selectEnd) return;
-  document.getElementById('f-checkin').value = selectStart;
-  document.getElementById('f-checkout').value = selectEnd;
-  document.getElementById('f-checkin-display').value = fmtDate(selectStart);
-  document.getElementById('f-checkout-display').value = fmtDate(selectEnd);
+  if(!selectStart) return;
+  if(calendarTarget === 'checkin'){
+    const existingCheckout = document.getElementById('f-checkout').value;
+    if(existingCheckout && existingCheckout <= selectStart){
+      document.getElementById('f-checkout').value = '';
+      document.getElementById('f-checkout-display').value = '';
+    }
+    document.getElementById('f-checkin').value = selectStart;
+    document.getElementById('f-checkin-display').value = fmtDate(selectStart);
+  } else {
+    const checkinVal = document.getElementById('f-checkin').value;
+    if(checkinVal && selectStart <= checkinVal){
+      alert('Check-out date must be after your check-in date.');
+      return;
+    }
+    if(checkinVal){
+      let blocked = false;
+      let d = new Date(checkinVal+'T00:00:00');
+      const end = new Date(selectStart+'T00:00:00');
+      while(d < end){
+        const k = toKey(d.getFullYear(), d.getMonth(), d.getDate());
+        if(blockedDates.has(k)){ blocked = true; break; }
+        d.setDate(d.getDate()+1);
+      }
+      if(blocked){
+        alert('Some dates in between are already unavailable. Please pick a different check-out date.');
+        return;
+      }
+    }
+    document.getElementById('f-checkout').value = selectStart;
+    document.getElementById('f-checkout-display').value = fmtDate(selectStart);
+  }
   closeGuestCalendar();
 });
 
