@@ -274,7 +274,15 @@
       </div>
     </div>
     <div id="admin-revenue-view" style="display:none;">
-      <div class="cal-title" style="text-align:left;margin-bottom:14px;">Revenue this month</div>
+      <div class="cal-title" style="text-align:left;margin-bottom:14px;">Revenue report</div>
+      <div class="field-row" style="margin-bottom:16px;">
+        <div class="field"><label>Month</label>
+          <select id="revenue-month-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
+        </div>
+        <div class="field"><label>Year</label>
+          <select id="revenue-year-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
+        </div>
+      </div>
       <div id="admin-revenue-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
       <div class="cal-actions" style="margin-top:14px;">
         <div></div>
@@ -759,6 +767,7 @@ async function loadPendingRequests(){
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
           <a href="#" class="admin-reject-btn" data-req-id="${r.id}" style="display:inline-block;padding:8px 14px;font-size:13px;font-weight:600;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;text-decoration:none;">Reject</a>
@@ -1120,10 +1129,6 @@ function regenerateInvoicePDF(r, e){
       msg += `Advance Paid: Rs. ${advance}\n`;
       msg += `*Balance Due: Rs. ${balance}*\n`;
     }
-    if(paymentAmount > 0){
-      msg += `\nPay ${paymentAmount >= total ? 'Full Amount' : 'Advance'} (Rs. ${paymentAmount}) to hold the dates:\n${upiLink}\n`;
-      msg += `No Google Pay? Pay any UPI app to: ${UPI_ID}\n`;
-    }
     msg += `\n`;
     msg += `Thank you for booking with Genga Nilayam Homestay!`;
     if(e){
@@ -1146,7 +1151,7 @@ async function generateReport(){
     const all = [];
     snap.forEach(doc=>{
       const data = doc.data();
-      if(doc.id.startsWith('request_') && data.checkin && data.checkin >= today && data.status !== 'cancelled'){
+      if(doc.id.startsWith('request_') && data.checkin && data.checkin >= today){
         all.push({ id: doc.id, ...data });
       }
     });
@@ -1160,7 +1165,8 @@ async function generateReport(){
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.guests || '?'} guests</div>
-        <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : 'Pending'}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</div>
+        <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
@@ -1217,13 +1223,17 @@ document.getElementById('report-back').addEventListener('click', ()=>{
 });
 
 /* ---------- Generate Revenue report: total invoiced this calendar month ---------- */
-async function generateRevenueReport(){
+let revenueViewYear = null, revenueViewMonth = null;
+
+async function generateRevenueReport(year, month){
   const listEl = document.getElementById('admin-revenue-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
   try{
-    const snap = await db.collection('genga_nilayam').get();
     const now = new Date();
-    const curYear = now.getFullYear(), curMonth = now.getMonth();
+    const curYear = year != null ? year : (revenueViewYear != null ? revenueViewYear : now.getFullYear());
+    const curMonth = month != null ? month : (revenueViewMonth != null ? revenueViewMonth : now.getMonth());
+    revenueViewYear = curYear; revenueViewMonth = curMonth;
+    const snap = await db.collection('genga_nilayam').get();
     let total = 0, count = 0;
     const items = [];
     snap.forEach(doc=>{
@@ -1244,7 +1254,7 @@ async function generateRevenueReport(){
     });
     items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
 
-    const monthLabel = now.toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+    const monthLabel = new Date(curYear, curMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
     let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>`;
     html += `<div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:4px;">Rs. ${total.toLocaleString('en-IN')}</div>`;
     html += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${count} invoice${count===1?'':'s'}</div>`;
@@ -1282,10 +1292,32 @@ async function generateRevenueReport(){
   }
 }
 
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 document.getElementById('admin-revenue-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'none';
   document.getElementById('admin-revenue-view').style.display = 'block';
+
+  const now = new Date();
+  revenueViewYear = null; revenueViewMonth = null; // fresh open always starts on the current month
+
+  const monthSel = document.getElementById('revenue-month-select');
+  monthSel.innerHTML = MONTH_NAMES.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+  monthSel.value = now.getMonth();
+
+  const yearSel = document.getElementById('revenue-year-select');
+  const thisYear = now.getFullYear();
+  const years = [];
+  for(let y = thisYear - 2; y <= thisYear + 1; y++) years.push(y);
+  yearSel.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  yearSel.value = thisYear;
+
   await generateRevenueReport();
+});
+document.getElementById('revenue-month-select').addEventListener('change', ()=>{
+  generateRevenueReport(Number(document.getElementById('revenue-year-select').value), Number(document.getElementById('revenue-month-select').value));
+});
+document.getElementById('revenue-year-select').addEventListener('change', ()=>{
+  generateRevenueReport(Number(document.getElementById('revenue-year-select').value), Number(document.getElementById('revenue-month-select').value));
 });
 document.getElementById('revenue-back').addEventListener('click', ()=>{
   document.getElementById('admin-revenue-view').style.display = 'none';
