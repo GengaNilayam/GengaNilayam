@@ -1238,7 +1238,7 @@ async function generateRevenueReport(year, month){
     const curMonth = month != null ? month : (revenueViewMonth != null ? revenueViewMonth : now.getMonth());
     revenueViewYear = curYear; revenueViewMonth = curMonth;
     const snap = await db.collection('genga_nilayam').get();
-    let total = 0, count = 0;
+    let total = 0, totalPaid = 0, totalBalance = 0, count = 0;
     const items = [];
     snap.forEach(doc=>{
       const data = doc.data();
@@ -1247,21 +1247,26 @@ async function generateRevenueReport(year, month){
       const checkinDate = new Date(data.checkin + 'T00:00:00');
       if(checkinDate.getFullYear() !== curYear || checkinDate.getMonth() !== curMonth) return;
       const amt = Number(data.total) || 0;
+      const adv = Number(data.advance) || 0;
+      const bal = data.balance != null ? Number(data.balance) : amt;
       total += amt;
+      totalPaid += adv;
+      totalBalance += bal;
       count += 1;
-      items.push({ id: doc.id, name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt, advance: Number(data.advance) || 0, balance: data.balance != null ? Number(data.balance) : amt });
+      items.push({ id: doc.id, name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt, advance: adv, balance: bal });
     });
     items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
 
     const monthLabel = new Date(curYear, curMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
     let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>`;
     html += `<div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:4px;">Rs. ${total.toLocaleString('en-IN')}</div>`;
-    html += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${count} invoice${count===1?'':'s'}</div>`;
+    html += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:6px;">${count} invoice${count===1?'':'s'} &middot; total bill value</div>`;
+    html += `<div style="font-size:14px;font-weight:600;margin-bottom:16px;">Total paid: Rs. ${totalPaid.toLocaleString('en-IN')} &middot; Balance: Rs. ${totalBalance.toLocaleString('en-IN')}</div>`;
     html += items.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.nights || nightsBetween(r.checkin, r.checkout) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkout)) === 1 ? '' : 's'}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">Total: Rs. ${r.amount.toLocaleString('en-IN')} &middot; Advance: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">Bill value: Rs. ${r.amount.toLocaleString('en-IN')} &middot; Paid: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>
         <div style="display:flex;gap:14px;margin-top:8px;">
           <button type="button" class="revenue-advance-btn" data-req-id="${r.id}" data-advance="${r.advance}" data-total="${r.amount}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>
           <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
