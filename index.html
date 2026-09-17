@@ -923,9 +923,12 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
+  const nights = Math.max(1, Math.round((new Date(checkout+'T00:00:00') - new Date(checkin+'T00:00:00')) / 86400000));
+
   const peak = checkMuhurthamPeak(checkin, checkinTime, currentProperty, Number(guests));
   if(peak.pricingApplies && peak.underMinimum){
-    const proceed = confirm(`High Demand day - Flat cost Rs. ${peak.flatRate} will apply.`);
+    const totalFlat = peak.flatRate * nights;
+    const proceed = confirm(`High Demand day - Flat cost Rs. ${peak.flatRate} x ${nights} night${nights>1?'s':''} = Rs. ${totalFlat} will apply.`);
     if(!proceed){ e.preventDefault(); return; }
   }
 
@@ -934,9 +937,10 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   if(phone) text += `Phone: ${phone}\n`;
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
+  text += `Nights: ${nights}\n`;
   text += `Guests: ${guests}\n`;
   text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
-  if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
+  if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate} x ${nights} night${nights>1?'s':''} = Rs. ${peak.flatRate * nights}\n`;
   if(message) text += `Message: ${message}\n`;
 
   // Point this same link at WhatsApp and let the browser's native click-follow
@@ -952,9 +956,9 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   const reqId = 'request_' + Date.now();
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: currentProperty, propertyName: PROPERTIES[currentProperty].name,
-    checkin, checkout, checkinTime, checkoutTime, guests, message,
+    checkin, checkout, checkinTime, checkoutTime, guests, message, nights,
     isMuhurtham: peak.isMuhurtham, muhurthamType: peak.isMuhurtham ? peak.type : null,
-    flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate : null,
+    flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate * nights : null,
     status: 'pending', submittedAt: new Date().toISOString()
   }).catch(()=>{});
 });
@@ -973,9 +977,12 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
+  const nights = Math.max(1, Math.round((new Date(checkout+'T00:00:00') - new Date(checkin+'T00:00:00')) / 86400000));
+
   const peak = checkMuhurthamPeak(checkin, checkinTime, 'both', Number(guests));
   if(peak.pricingApplies && peak.underMinimum){
-    const proceed = confirm(`High Demand day - Flat cost Rs. ${peak.flatRate} will apply.`);
+    const totalFlat = peak.flatRate * nights;
+    const proceed = confirm(`High Demand day - Flat cost Rs. ${peak.flatRate} x ${nights} night${nights>1?'s':''} = Rs. ${totalFlat} will apply.`);
     if(!proceed){ e.preventDefault(); return; }
   }
 
@@ -984,9 +991,10 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   if(phone) text += `Phone: ${phone}\n`;
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
+  text += `Nights: ${nights}\n`;
   text += `Guests (total across both homes): ${guests}\n`;
   text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
-  if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate}\n`;
+  if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate} x ${nights} night${nights>1?'s':''} = Rs. ${peak.flatRate * nights}\n`;
   if(message) text += `Message: ${message}\n`;
 
   e.currentTarget.href = `https://api.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${encodeURIComponent(text)}`;
@@ -998,9 +1006,9 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   const reqId = 'request_' + Date.now();
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: 'both', propertyName: bothName,
-    checkin, checkout, checkinTime, checkoutTime, guests, message,
+    checkin, checkout, checkinTime, checkoutTime, guests, message, nights,
     isMuhurtham: peak.isMuhurtham, muhurthamType: peak.isMuhurtham ? peak.type : null,
-    flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate : null,
+    flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate * nights : null,
     status: 'pending', submittedAt: new Date().toISOString()
   }).catch(()=>{});
 });
