@@ -1459,8 +1459,11 @@ const MONTH_LOOKUP = {
   dec:11, december:11
 };
 
-// Parses the site's own "18 Sept 2026 at 2:00 pm" format by hand, with an
-// explicit month-name table, instead of handing the raw string to
+// Parses either the site's own "18 Sept 2026 at 2:00 pm" format, or a
+// numeric "19/09/2026 & 4:00 A.M" style date typed by hand (day/month/year,
+// joined to the time with "&" instead of "at" - the format used when a
+// booking is phoned in rather than sent through the site), by hand with an
+// explicit month-name table rather than handing the raw string to
 // `new Date(...)`. Passing anything but a strict ISO string to the Date
 // constructor is implementation-defined and reads differently across
 // browsers - that mismatch (not any one obvious bug) is what was making
@@ -1468,22 +1471,38 @@ const MONTH_LOOKUP = {
 function parseDateTimeStr(str){
   if(!str) return null;
   str = cleanPastedText(str).trim();
-  const parts = str.split(/\s+at\s+/i);
+  const parts = str.split(/\s+(?:at|&)\s+/i);
   const datePart = parts[0].trim();
 
   let iso = null;
-  const dm = datePart.match(/(\d{1,2})[\s,.-]+([A-Za-z]+)[\s,.-]+(\d{4})/);
-  if(dm){
-    const day = Number(dm[1]);
-    const month = MONTH_LOOKUP[dm[2].toLowerCase()];
-    const year = Number(dm[3]);
-    if(month != null && day >= 1 && day <= 31){
+
+  // "19/09/2026" or "19-09-2026" - day/month/year.
+  const nm = datePart.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if(nm){
+    const day = Number(nm[1]);
+    const month = Number(nm[2]) - 1;
+    const year = Number(nm[3]);
+    if(month >= 0 && month <= 11 && day >= 1 && day <= 31){
       iso = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
     }
   }
+
+  // "18 Sept 2026" / "18 September 2026" - day, month name, year.
   if(!iso){
-    // Fallback for anything typed by hand rather than pasted from the site
-    // (e.g. an ISO date), which the browser can usually make sense of.
+    const dm = datePart.match(/(\d{1,2})[\s,.-]+([A-Za-z]+)[\s,.-]+(\d{4})/);
+    if(dm){
+      const day = Number(dm[1]);
+      const month = MONTH_LOOKUP[dm[2].toLowerCase()];
+      const year = Number(dm[3]);
+      if(month != null && day >= 1 && day <= 31){
+        iso = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+      }
+    }
+  }
+
+  if(!iso){
+    // Fallback for anything else typed by hand (e.g. an ISO date already),
+    // which the browser can usually make sense of.
     const d = new Date(datePart);
     if(!isNaN(d.getTime())){
       iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
@@ -1492,13 +1511,19 @@ function parseDateTimeStr(str){
   if(!iso) return null;
 
   let time24 = '';
-  const tm = (parts[1] || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  const timePart = (parts[1] || '').trim();
+  // Tolerates "4:00 am", "4:00 A.M", "4:00a.m." etc.
+  const tm = timePart.match(/(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?/i);
   if(tm){
     let h = Number(tm[1]);
     const ap = tm[3].toLowerCase();
-    if(ap === 'pm' && h !== 12) h += 12;
-    if(ap === 'am' && h === 12) h = 0;
+    if(ap === 'p' && h !== 12) h += 12;
+    if(ap === 'a' && h === 12) h = 0;
     time24 = String(h).padStart(2,'0') + ':' + tm[2];
+  } else {
+    // No am/pm given - accept a plain 24-hour time like "16:00" too.
+    const tm24 = timePart.match(/^(\d{1,2}):(\d{2})$/);
+    if(tm24 && Number(tm24[1]) <= 23) time24 = String(Number(tm24[1])).padStart(2,'0') + ':' + tm24[2];
   }
   return { date: iso, time: time24 };
 }
@@ -1519,13 +1544,18 @@ document.getElementById('q-parse-btn').addEventListener('click', ()=>{
       document.getElementById('q-property').value = 'home1'; filledAny = true;
     }
 
-    const nameMatch = text.match(/Name\s*:\s*(.+)/i);
+    // Each label below accepts a colon OR a dash, since a message typed by
+    // hand for a phoned-in booking ("Name - X", "Phone number - X") uses
+    // dashes, while the site's own generated message uses colons. Several
+    // common wordings are accepted per field too, since a hand-typed
+    // message will vary booking to booking, not just in punctuation.
+    const nameMatch = text.match(/Name\s*[:\-]\s*(.+)/i);
     if(nameMatch){ document.getElementById('q-name').value = nameMatch[1].trim(); filledAny = true; }
 
-    const phoneMatch = text.match(/Phone\s*:\s*(.+)/i);
+    const phoneMatch = text.match(/(?:Phone|Mobile|Contact|WhatsApp)(?:\s*(?:no\.?|number))?\s*[:\-]\s*(.+)/i);
     if(phoneMatch){ document.getElementById('q-phone').value = phoneMatch[1].trim(); filledAny = true; }
 
-    const checkinMatch = text.match(/Check-?in\s*:\s*(.+)/i);
+    const checkinMatch = text.match(/(?:Check[\s-]?in|Arrival)(?:\s*date)?(?:\s*(?:&|and|\/)\s*time)?\s*[:\-]\s*(.+)/i);
     if(checkinMatch){
       const parsed = parseDateTimeStr(checkinMatch[1]);
       if(parsed){
@@ -1535,7 +1565,7 @@ document.getElementById('q-parse-btn').addEventListener('click', ()=>{
       } else missing.push('check-in date');
     }
 
-    const checkoutMatch = text.match(/Check-?out\s*:\s*(.+)/i);
+    const checkoutMatch = text.match(/(?:Check[\s-]?out|Departure)(?:\s*date)?(?:\s*(?:&|and|\/)\s*time)?\s*[:\-]\s*(.+)/i);
     if(checkoutMatch){
       const parsed = parseDateTimeStr(checkoutMatch[1]);
       if(parsed){
@@ -1545,7 +1575,9 @@ document.getElementById('q-parse-btn').addEventListener('click', ()=>{
       } else missing.push('check-out date');
     }
 
-    const guestsMatch = text.match(/Guests[^:]*:\s*(\d+)/i);
+    // [^:\-\n]* deliberately stops at a line break so this can't skip past
+    // an unrelated "Guest" (e.g. inside a name) onto the next field's value.
+    const guestsMatch = text.match(/(?:No\.?\s*of\s*(?:persons?|guests?|pax)|Number\s*of\s*(?:persons?|guests?)|Persons?|Pax|Guests?)[^:\-\n]*[:\-]\s*(\d+)/i);
     if(guestsMatch){ document.getElementById('q-guests').value = guestsMatch[1]; filledAny = true; }
 
     if(!filledAny){
