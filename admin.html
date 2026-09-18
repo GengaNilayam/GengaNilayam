@@ -758,7 +758,16 @@ async function blockOneProperty(propKey, req){
     dates.add(toKey(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setDate(d.getDate()+1);
   }
-  if(req.checkoutTime && req.checkoutTime > "11:00"){
+  // Early check-in means the property had to be ready from the night
+  // before, so that eve isn't free for anyone else either.
+  if(req.checkinTime && req.checkinTime < "10:30"){
+    const prevDay = new Date(req.checkin+'T00:00:00');
+    prevDay.setDate(prevDay.getDate()-1);
+    dates.add(toKey(prevDay.getFullYear(), prevDay.getMonth(), prevDay.getDate()));
+  }
+  // Late checkout eats into the same day's turnaround, so the checkout
+  // date itself stays blocked too.
+  if(req.checkoutTime && req.checkoutTime > "10:30"){
     dates.add(toKey(end.getFullYear(), end.getMonth(), end.getDate()));
   }
   await db.collection('genga_nilayam').doc(propKey).set({ dates: [...dates] });
@@ -786,7 +795,14 @@ async function unblockOneProperty(propKey, req){
     dates.delete(toKey(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setDate(d.getDate()+1);
   }
-  if(req.checkoutTime && req.checkoutTime > "11:00"){
+  // Mirrors the early-checkin / late-checkout extra-day rules in
+  // blockOneProperty, so cancelling a booking frees exactly what it held.
+  if(req.checkinTime && req.checkinTime < "10:30"){
+    const prevDay = new Date(req.checkin+'T00:00:00');
+    prevDay.setDate(prevDay.getDate()-1);
+    dates.delete(toKey(prevDay.getFullYear(), prevDay.getMonth(), prevDay.getDate()));
+  }
+  if(req.checkoutTime && req.checkoutTime > "10:30"){
     dates.delete(toKey(end.getFullYear(), end.getMonth(), end.getDate()));
   }
   await db.collection('genga_nilayam').doc(propKey).set({ dates: [...dates] });
