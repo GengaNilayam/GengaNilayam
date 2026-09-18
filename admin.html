@@ -218,6 +218,32 @@
 </head>
 <body>
 
+<!-- Date-picker popup, shared by the Quick Invoice and revenue-range
+     DD/MM/YYYY fields below. For the Quick Invoice check-in/check-out
+     fields it behaves exactly like the main booking calendar (blocked
+     dates greyed out and disabled, muhurtham dates highlighted), scoped
+     to whichever property is selected in Quick Invoice. For the revenue
+     report's date-range fields it stays a plain, fully-open picker,
+     since those need to reach into the past for reporting. -->
+<div class="cal-overlay" id="qdp-overlay" style="z-index:200;">
+  <div class="cal-modal">
+    <div class="cal-head">
+      <button class="cal-nav" id="qdp-prev">&larr;</button>
+      <div class="cal-title" id="qdp-title"></div>
+      <button class="cal-nav" id="qdp-next">&rarr;</button>
+    </div>
+    <div class="cal-legend" id="qdp-legend" style="display:none;">
+      <span><i class="dot avail"></i>Available</span>
+      <span><i class="dot blocked"></i>Blocked</span>
+    </div>
+    <div class="cal-grid" id="qdp-grid"></div>
+    <div class="cal-actions">
+      <div class="cal-hint" id="qdp-hint">Tap a date to select it</div>
+      <button type="button" class="btn" id="qdp-close" style="padding:8px 14px;background:#fff;color:var(--wood);border:2px solid var(--wood);">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Admin availability panel -->
 <div class="cal-overlay show" id="admin-overlay">
   <div class="cal-modal">
@@ -286,8 +312,18 @@
       <button type="button" id="revenue-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
       <div id="revenue-range-fields" style="display:none;margin-bottom:16px;">
         <div class="field-row">
-          <div class="field"><label>From</label><input type="text" id="revenue-range-from" placeholder="DD/MM/YYYY"></div>
-          <div class="field"><label>To</label><input type="text" id="revenue-range-to" placeholder="DD/MM/YYYY"></div>
+          <div class="field"><label>From</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="revenue-range-from" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="revenue-range-from" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+          <div class="field"><label>To</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="revenue-range-to" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="revenue-range-to" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
         </div>
         <button type="button" class="btn btn-primary" id="revenue-range-show" style="width:100%;padding:10px;margin-top:10px;">Show revenue for this range</button>
       </div>
@@ -314,11 +350,21 @@
       <div class="field"><label>Guest name</label><input id="q-name"></div>
       <div class="field"><label>WhatsApp number</label><input id="q-phone" placeholder="98470 12233"></div>
       <div class="field-row">
-        <div class="field"><label>Check-in date</label><input type="text" id="q-checkin-date" placeholder="DD/MM/YYYY"></div>
+        <div class="field"><label>Check-in date</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="q-checkin-date" placeholder="DD/MM/YYYY" style="flex:1;">
+            <button type="button" class="qdp-open-btn" data-target="q-checkin-date" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+          </div>
+        </div>
         <div class="field"><label>Check-in time</label><input type="time" id="q-checkin-time" value="12:00"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Check-out date</label><input type="text" id="q-checkout-date" placeholder="DD/MM/YYYY"></div>
+        <div class="field"><label>Check-out date</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="q-checkout-date" placeholder="DD/MM/YYYY" style="flex:1;">
+            <button type="button" class="qdp-open-btn" data-target="q-checkout-date" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+          </div>
+        </div>
         <div class="field"><label>Check-out time</label><input type="time" id="q-checkout-time" value="12:00"></div>
       </div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" id="q-guests"></div>
@@ -572,7 +618,12 @@ const MUHURTHAM_DATES = {
   '2027-12-10': 'valarpirai',
 };
 
-function renderCalendarGrid(gridEl, titleEl, year, month, opts){
+function renderCalendarGrid(gridEl, titleEl, year, month, opts, blockedSet){
+  // blockedSet lets a caller show a different property's blocked dates than
+  // whatever the main admin calendar currently has loaded (e.g. the Quick
+  // Invoice picker, scoped to whichever Home is selected there); every
+  // existing call site omits it and keeps using the shared `blockedDates`.
+  const bSet = blockedSet || blockedDates;
   const first = new Date(year, month, 1);
   const startDow = first.getDay();
   const daysInMonth = new Date(year, month+1, 0).getDate();
@@ -586,7 +637,7 @@ function renderCalendarGrid(gridEl, titleEl, year, month, opts){
   for(let d=1; d<=daysInMonth; d++){
     const key = toKey(year, month, d);
     const isPast = key < today;
-    const isBlocked = blockedDates.has(key);
+    const isBlocked = bSet.has(key);
     let cls = 'cal-day';
     if(isPast) cls += ' past';
     else if(isBlocked) cls += ' blocked';
@@ -1455,9 +1506,12 @@ document.getElementById('admin-quick-btn').addEventListener('click', ()=>{
   document.getElementById('q-links').style.display = 'none';
 });
 
-document.getElementById('q-back').addEventListener('click', ()=>{
+document.getElementById('q-back').addEventListener('click', async ()=>{
   document.getElementById('admin-quick-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
+  // Refresh so a pending card cleared out by Quick Invoice (see q-generate)
+  // disappears immediately, instead of waiting for a property-dropdown change.
+  await loadPendingRequests();
 });
 
 // Reads the site's own booking-request message format (and close variants)
@@ -1737,6 +1791,29 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
     await db.collection('genga_nilayam').doc(reqId).set(reqData);
   }catch(e){ /* non-fatal: invoice still goes out even if the record fails to save */ }
 
+  // If this same guest/property/dates already has a pending request on file
+  // (e.g. they booked on the site, and this invoice is being made from a
+  // pasted WhatsApp message instead of that pending card's own "Create
+  // Invoice" button), clear the old pending request out. Otherwise it's
+  // stuck showing in Pending Requests forever, even though it's actually
+  // already invoiced under this new record.
+  try{
+    const wantedPhone = normalizePhone(phoneRaw);
+    if(wantedPhone){
+      const snap = await db.collection('genga_nilayam').get();
+      const stale = [];
+      snap.forEach(doc=>{
+        const d = doc.data();
+        if(doc.id !== reqId && doc.id.startsWith('request_') && d.status === 'pending'
+          && normalizePhone(d.phone||'') === wantedPhone
+          && d.property === property && d.checkin === checkinDate && d.checkout === checkoutDate){
+          stale.push(doc.id);
+        }
+      });
+      await Promise.all(stale.map(id => db.collection('genga_nilayam').doc(id).delete()));
+    }
+  }catch(e){ /* non-fatal: worst case a stale pending card is left for manual cleanup */ }
+
   // Dates are held only once payment is actually on record - either an
   // advance was entered here, or it gets recorded later via "Update advance".
   if(advance > 0){
@@ -1776,6 +1853,100 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
 
   document.getElementById('q-links').style.display = 'flex';
   document.getElementById('q-error').textContent = 'Invoice ready — tap below to download or message the guest.';
+});
+
+/* ---------- Date picker popup for the DD/MM/YYYY fields above ---------- */
+// Check-in/check-out (Quick Invoice) are real bookings, so their picker is
+// the same calendar as "usual booking" - blocked dates greyed out and
+// unselectable (so a phoned-in booking can't double-book a taken date),
+// muhurtham dates highlighted the same as the main availability calendar.
+// The revenue report's From/To range is not a booking - it's picking a
+// reporting period, which routinely needs to reach into the past - so it
+// stays a plain, everything-selectable calendar with no blocked/past limits.
+const QDP_BOOKING_FIELDS = new Set(['q-checkin-date', 'q-checkout-date']);
+
+let qdpTarget = null;        // id of the text field currently being filled
+let qdpYear, qdpMonth;       // month currently shown in the popup
+let qdpBlockedDates = new Set(); // fetched fresh per open, scoped to q-property - kept separate from
+                                  // the main calendar's own `blockedDates` so opening this picker never
+                                  // overwrites what the main "Manage availability" calendar is showing.
+
+async function loadQdpBlockedDates(propertyKey){
+  try{
+    const keys = propertyKey === 'both' ? ['home1', 'home2'] : [propertyKey];
+    const snaps = await Promise.all(keys.map(k => db.collection('genga_nilayam').doc(PROPERTIES[k].blockedKey).get()));
+    const merged = new Set();
+    snaps.forEach(doc => { if(doc.exists && doc.data().dates) doc.data().dates.forEach(d => merged.add(d)); });
+    qdpBlockedDates = merged;
+  }catch(e){ qdpBlockedDates = new Set(); }
+}
+
+async function openDatePicker(fieldId){
+  qdpTarget = fieldId;
+  const current = displayToIso(document.getElementById(fieldId).value);
+  const base = current ? new Date(current + 'T00:00:00') : new Date();
+  qdpYear = base.getFullYear();
+  qdpMonth = base.getMonth();
+  document.getElementById('qdp-overlay').classList.add('show');
+
+  const isBooking = QDP_BOOKING_FIELDS.has(fieldId);
+  document.getElementById('qdp-legend').style.display = isBooking ? 'flex' : 'none';
+  document.getElementById('qdp-hint').textContent = isBooking
+    ? 'Grey dates are already blocked; orange/yellow are muhurtham dates.'
+    : 'Tap a date to select it.';
+
+  if(isBooking){
+    document.getElementById('qdp-grid').innerHTML = '<div class="cal-hint">Loading…</div>';
+    await loadQdpBlockedDates(document.getElementById('q-property').value);
+  }
+  renderDatePickerGrid();
+}
+
+function renderDatePickerGrid(){
+  const gridEl = document.getElementById('qdp-grid');
+  const titleEl = document.getElementById('qdp-title');
+  const isBooking = qdpTarget && QDP_BOOKING_FIELDS.has(qdpTarget);
+  const selectedIso = qdpTarget ? displayToIso(document.getElementById(qdpTarget).value) : '';
+
+  if(isBooking){
+    // Full parity with the main booking calendar: past/blocked days
+    // disabled, muhurtham highlighted - via the same renderCalendarGrid
+    // used there, just scoped to this picker's own fetched blocked set.
+    renderCalendarGrid(gridEl, titleEl, qdpYear, qdpMonth, { selStart: selectedIso }, qdpBlockedDates);
+  }else{
+    const first = new Date(qdpYear, qdpMonth, 1);
+    const startDow = first.getDay();
+    const daysInMonth = new Date(qdpYear, qdpMonth + 1, 0).getDate();
+    titleEl.textContent = first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    let html = DOW.map(d => `<div class="cal-dow">${d}</div>`).join('');
+    for(let i = 0; i < startDow; i++) html += `<div class="cal-day empty"></div>`;
+    for(let d = 1; d <= daysInMonth; d++){
+      const key = toKey(qdpYear, qdpMonth, d);
+      const cls = 'cal-day avail' + (key === selectedIso ? ' selected' : '');
+      html += `<button type="button" class="${cls}" data-key="${key}">${d}</button>`;
+    }
+    gridEl.innerHTML = html;
+  }
+
+  gridEl.querySelectorAll('.cal-day[data-key]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(qdpTarget) document.getElementById(qdpTarget).value = isoToDisplay(btn.getAttribute('data-key'));
+      document.getElementById('qdp-overlay').classList.remove('show');
+    });
+  });
+}
+
+document.getElementById('qdp-prev').addEventListener('click', () => {
+  qdpMonth--; if(qdpMonth < 0){ qdpMonth = 11; qdpYear--; } renderDatePickerGrid();
+});
+document.getElementById('qdp-next').addEventListener('click', () => {
+  qdpMonth++; if(qdpMonth > 11){ qdpMonth = 0; qdpYear++; } renderDatePickerGrid();
+});
+document.getElementById('qdp-close').addEventListener('click', () => {
+  document.getElementById('qdp-overlay').classList.remove('show');
+});
+document.querySelectorAll('.qdp-open-btn').forEach(btn => {
+  btn.addEventListener('click', () => openDatePicker(btn.getAttribute('data-target')));
 });
 
 </script>
