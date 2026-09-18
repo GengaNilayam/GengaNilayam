@@ -1008,8 +1008,8 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
 /* ---------- Generate Report: every future check-in, both properties ---------- */
 // Lets the admin record an advance payment after the fact, since guests
 // typically pay it only once the invoice has already reached them.
-async function promptUpdateAdvance(reqId, currentAdvance, total, refreshFn){
-  const input = prompt('Advance paid so far (Rs.):', currentAdvance || '0');
+async function promptUpdateAdvance(reqId, currentAdvance, total, refreshFn, label){
+  const input = prompt(label || 'Advance paid so far (Rs.):', currentAdvance || '0');
   if(input === null) return; // cancelled
   const newAdvance = Number(input);
   if(isNaN(newAdvance) || newAdvance < 0){
@@ -1201,6 +1201,7 @@ async function generateReport(){
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
+          ${r.status === 'invoiced' ? `<button type="button" class="report-bill-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>` : ''}
           ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
           ${r.status === 'invoiced' ? `<a href="#" class="report-regen-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Regenerate invoice</a>` : ''}
           ${r.status === 'invoiced' ? `<a href="#" class="report-cancel-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Cancel booking</a>` : ''}
@@ -1221,6 +1222,14 @@ async function generateReport(){
         if(item) regenerateInvoicePDF(item, e);
         else e.preventDefault();
       });
+    });
+    listEl.querySelectorAll('.report-bill-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> promptUpdateBillAmount(
+        btn.getAttribute('data-req-id'),
+        Number(btn.getAttribute('data-total')),
+        Number(btn.getAttribute('data-advance')),
+        generateReport
+      ));
     });
     listEl.querySelectorAll('.report-advance-btn').forEach(btn=>{
       btn.addEventListener('click', ()=> promptUpdateAdvance(
@@ -1318,6 +1327,7 @@ async function generateRevenueReport(opts){
         <div style="font-size:13px;color:var(--ink-soft);">Bill value: Rs. ${r.amount.toLocaleString('en-IN')} &middot; Paid: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" class="revenue-bill-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>
+          <button type="button" class="revenue-paid-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update paid amount</button>
           <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
         </div>
       </div>
@@ -1329,6 +1339,15 @@ async function generateRevenueReport(opts){
         Number(btn.getAttribute('data-total')),
         Number(btn.getAttribute('data-advance')),
         generateRevenueReport
+      ));
+    });
+    listEl.querySelectorAll('.revenue-paid-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> promptUpdateAdvance(
+        btn.getAttribute('data-req-id'),
+        Number(btn.getAttribute('data-advance')),
+        Number(btn.getAttribute('data-total')),
+        generateRevenueReport,
+        'Amount paid so far (Rs.):'
       ));
     });
     listEl.querySelectorAll('.revenue-delete-btn').forEach(btn=>{
