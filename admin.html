@@ -275,13 +275,21 @@
     </div>
     <div id="admin-revenue-view" style="display:none;">
       <div class="cal-title" style="text-align:left;margin-bottom:14px;">Revenue report</div>
-      <div class="field-row" style="margin-bottom:16px;">
+      <div class="field-row" style="margin-bottom:12px;">
         <div class="field"><label>Month</label>
           <select id="revenue-month-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
         </div>
         <div class="field"><label>Year</label>
           <select id="revenue-year-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
         </div>
+      </div>
+      <button type="button" id="revenue-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
+      <div id="revenue-range-fields" style="display:none;margin-bottom:16px;">
+        <div class="field-row">
+          <div class="field"><label>From</label><input type="date" id="revenue-range-from"></div>
+          <div class="field"><label>To</label><input type="date" id="revenue-range-to"></div>
+        </div>
+        <button type="button" class="btn btn-primary" id="revenue-range-show" style="width:100%;padding:10px;margin-top:10px;">Show revenue for this range</button>
       </div>
       <div id="admin-revenue-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
       <div class="cal-actions" style="margin-top:14px;">
@@ -1024,6 +1032,26 @@ async function promptUpdateAdvance(reqId, currentAdvance, total, refreshFn){
   }
 }
 
+// Lets the admin correct the invoiced bill value itself (e.g. a discount or
+// a correction agreed after the invoice went out), without touching whatever
+// has already been recorded as paid — the balance is simply re-derived.
+async function promptUpdateBillAmount(reqId, currentTotal, currentAdvance, refreshFn){
+  const input = prompt('Bill amount (Rs.):', currentTotal || '0');
+  if(input === null) return; // cancelled
+  const newTotal = Number(input);
+  if(isNaN(newTotal) || newTotal < 0){
+    alert('Please enter a valid amount.');
+    return;
+  }
+  const newBalance = newTotal - (Number(currentAdvance) || 0);
+  try{
+    await db.collection('genga_nilayam').doc(reqId).update({ total: newTotal, balance: newBalance });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
 // Re-outputs an already-invoiced booking as a fresh PDF + WhatsApp message,
 // picking up whatever advance/balance is currently on record. No Firestore
 // writes here, so nothing to await - the download and WhatsApp open happen
@@ -1227,16 +1255,30 @@ document.getElementById('report-back').addEventListener('click', ()=>{
 });
 
 /* ---------- Generate Revenue report: total invoiced this calendar month ---------- */
+let revenueViewMode = 'month';
 let revenueViewYear = null, revenueViewMonth = null;
+let revenueViewFrom = null, revenueViewTo = null;
 
-async function generateRevenueReport(year, month){
+async function generateRevenueReport(opts){
+  if(opts && opts.mode === 'range'){
+    revenueViewMode = 'range';
+    revenueViewFrom = opts.from;
+    revenueViewTo = opts.to;
+  } else if(opts && opts.mode === 'month'){
+    revenueViewMode = 'month';
+    revenueViewYear = opts.year;
+    revenueViewMonth = opts.month;
+  }
+  // a bare refresh call (no opts) keeps whatever mode/params were last active
+
   const listEl = document.getElementById('admin-revenue-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
   try{
     const now = new Date();
-    const curYear = year != null ? year : (revenueViewYear != null ? revenueViewYear : now.getFullYear());
-    const curMonth = month != null ? month : (revenueViewMonth != null ? revenueViewMonth : now.getMonth());
-    revenueViewYear = curYear; revenueViewMonth = curMonth;
+    if(revenueViewMode === 'month' && revenueViewYear == null){
+      revenueViewYear = now.getFullYear();
+      revenueViewMonth = now.getMonth();
+    }
     const snap = await db.collection('genga_nilayam').get();
     let total = 0, totalPaid = 0, totalBalance = 0, count = 0;
     const items = [];
@@ -1244,8 +1286,13 @@ async function generateRevenueReport(year, month){
       const data = doc.data();
       if(!doc.id.startsWith('request_') || data.status !== 'invoiced') return;
       if(!data.checkin) return;
-      const checkinDate = new Date(data.checkin + 'T00:00:00');
-      if(checkinDate.getFullYear() !== curYear || checkinDate.getMonth() !== curMonth) return;
+      if(revenueViewMode === 'range'){
+        if(!revenueViewFrom || !revenueViewTo) return;
+        if(data.checkin < revenueViewFrom || data.checkin > revenueViewTo) return;
+      } else {
+        const checkinDate = new Date(data.checkin + 'T00:00:00');
+        if(checkinDate.getFullYear() !== revenueViewYear || checkinDate.getMonth() !== revenueViewMonth) return;
+      }
       const amt = Number(data.total) || 0;
       const adv = Number(data.advance) || 0;
       const bal = data.balance != null ? Number(data.balance) : amt;
@@ -1257,7 +1304,9 @@ async function generateRevenueReport(year, month){
     });
     items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
 
-    const monthLabel = new Date(curYear, curMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+    const monthLabel = revenueViewMode === 'range'
+      ? `${fmtDate(revenueViewFrom)} to ${fmtDate(revenueViewTo)}`
+      : new Date(revenueViewYear, revenueViewMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
     let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>`;
     html += `<div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:4px;">Rs. ${total.toLocaleString('en-IN')}</div>`;
     html += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:6px;">${count} invoice${count===1?'':'s'} &middot; total bill value</div>`;
@@ -1267,18 +1316,18 @@ async function generateRevenueReport(year, month){
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.nights || nightsBetween(r.checkin, r.checkout) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkout)) === 1 ? '' : 's'}</div>
         <div style="font-size:13px;color:var(--ink-soft);">Bill value: Rs. ${r.amount.toLocaleString('en-IN')} &middot; Paid: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>
-        <div style="display:flex;gap:14px;margin-top:8px;">
-          <button type="button" class="revenue-advance-btn" data-req-id="${r.id}" data-advance="${r.advance}" data-total="${r.amount}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>
+        <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
+          <button type="button" class="revenue-bill-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>
           <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
         </div>
       </div>
     `).join('');
     listEl.innerHTML = html;
-    listEl.querySelectorAll('.revenue-advance-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> promptUpdateAdvance(
+    listEl.querySelectorAll('.revenue-bill-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> promptUpdateBillAmount(
         btn.getAttribute('data-req-id'),
-        Number(btn.getAttribute('data-advance')),
         Number(btn.getAttribute('data-total')),
+        Number(btn.getAttribute('data-advance')),
         generateRevenueReport
       ));
     });
@@ -1302,7 +1351,12 @@ document.getElementById('admin-revenue-btn').addEventListener('click', async ()=
   document.getElementById('admin-revenue-view').style.display = 'block';
 
   const now = new Date();
+  revenueViewMode = 'month';
   revenueViewYear = null; revenueViewMonth = null; // fresh open always starts on the current month
+  revenueViewFrom = null; revenueViewTo = null;
+  document.getElementById('revenue-range-fields').style.display = 'none';
+  document.getElementById('revenue-range-from').value = '';
+  document.getElementById('revenue-range-to').value = '';
 
   const monthSel = document.getElementById('revenue-month-select');
   monthSel.innerHTML = MONTH_NAMES.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
@@ -1318,10 +1372,23 @@ document.getElementById('admin-revenue-btn').addEventListener('click', async ()=
   await generateRevenueReport();
 });
 document.getElementById('revenue-month-select').addEventListener('change', ()=>{
-  generateRevenueReport(Number(document.getElementById('revenue-year-select').value), Number(document.getElementById('revenue-month-select').value));
+  generateRevenueReport({ mode: 'month', year: Number(document.getElementById('revenue-year-select').value), month: Number(document.getElementById('revenue-month-select').value) });
 });
 document.getElementById('revenue-year-select').addEventListener('change', ()=>{
-  generateRevenueReport(Number(document.getElementById('revenue-year-select').value), Number(document.getElementById('revenue-month-select').value));
+  generateRevenueReport({ mode: 'month', year: Number(document.getElementById('revenue-year-select').value), month: Number(document.getElementById('revenue-month-select').value) });
+});
+document.getElementById('revenue-range-toggle').addEventListener('click', ()=>{
+  const fields = document.getElementById('revenue-range-fields');
+  const showing = fields.style.display !== 'none';
+  fields.style.display = showing ? 'none' : 'block';
+  document.getElementById('revenue-range-toggle').textContent = showing ? 'Use a custom date range instead' : 'Use a month instead';
+});
+document.getElementById('revenue-range-show').addEventListener('click', ()=>{
+  const from = document.getElementById('revenue-range-from').value;
+  const to = document.getElementById('revenue-range-to').value;
+  if(!from || !to){ alert('Please pick both a from and a to date.'); return; }
+  if(to < from){ alert('The "to" date needs to be after the "from" date.'); return; }
+  generateRevenueReport({ mode: 'range', from, to });
 });
 document.getElementById('revenue-back').addEventListener('click', ()=>{
   document.getElementById('admin-revenue-view').style.display = 'none';
@@ -1354,12 +1421,57 @@ document.getElementById('q-back').addEventListener('click', ()=>{
 // Reads the site's own booking-request message format (and close variants)
 // and fills in whatever it can find. Anything it can't find, or gets wrong,
 // is still a plain editable field below — nothing here is final.
+
+// Phones (and WhatsApp itself) often slip in invisible bidi/formatting
+// characters around punctuation and numbers when a message is copied, and
+// sometimes swap a normal space for a non-breaking one. Those are invisible
+// to the admin but break naive matching, so they're stripped/normalised
+// before any parsing is attempted.
+function cleanPastedText(str){
+  return String(str || '')
+    .replace(/[​-‏‪-‮⁠﻿]/g, '')
+    .replace(/ /g, ' ');
+}
+
+const MONTH_LOOKUP = {
+  jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3,
+  may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7,
+  sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10,
+  dec:11, december:11
+};
+
+// Parses the site's own "18 Sept 2026 at 2:00 pm" format by hand, with an
+// explicit month-name table, instead of handing the raw string to
+// `new Date(...)`. Passing anything but a strict ISO string to the Date
+// constructor is implementation-defined and reads differently across
+// browsers - that mismatch (not any one obvious bug) is what was making
+// this silently fail to fill the date fields.
 function parseDateTimeStr(str){
   if(!str) return null;
+  str = cleanPastedText(str).trim();
   const parts = str.split(/\s+at\s+/i);
-  const d = new Date(parts[0].trim());
-  if(isNaN(d.getTime())) return null;
-  const iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const datePart = parts[0].trim();
+
+  let iso = null;
+  const dm = datePart.match(/(\d{1,2})[\s,.-]+([A-Za-z]+)[\s,.-]+(\d{4})/);
+  if(dm){
+    const day = Number(dm[1]);
+    const month = MONTH_LOOKUP[dm[2].toLowerCase()];
+    const year = Number(dm[3]);
+    if(month != null && day >= 1 && day <= 31){
+      iso = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+    }
+  }
+  if(!iso){
+    // Fallback for anything typed by hand rather than pasted from the site
+    // (e.g. an ISO date), which the browser can usually make sense of.
+    const d = new Date(datePart);
+    if(!isNaN(d.getTime())){
+      iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+  }
+  if(!iso) return null;
+
   let time24 = '';
   const tm = (parts[1] || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
   if(tm){
@@ -1373,45 +1485,60 @@ function parseDateTimeStr(str){
 }
 
 document.getElementById('q-parse-btn').addEventListener('click', ()=>{
-  const text = document.getElementById('q-paste').value;
-  if(!text.trim()) return;
+  try{
+    const text = cleanPastedText(document.getElementById('q-paste').value);
+    if(!text.trim()) return;
 
-  if(/Home#1\s*&\s*Home#2/i.test(text) || /BOTH homes/i.test(text)){
-    document.getElementById('q-property').value = 'both';
-  } else if(/Home#2/i.test(text)){
-    document.getElementById('q-property').value = 'home2';
-  } else if(/Home#1/i.test(text)){
-    document.getElementById('q-property').value = 'home1';
-  }
+    let filledAny = false;
+    const missing = [];
 
-  const nameMatch = text.match(/Name:\s*(.+)/i);
-  if(nameMatch) document.getElementById('q-name').value = nameMatch[1].trim();
-
-  const phoneMatch = text.match(/Phone:\s*(.+)/i);
-  if(phoneMatch) document.getElementById('q-phone').value = phoneMatch[1].trim();
-
-  const checkinMatch = text.match(/Check-in:\s*(.+)/i);
-  if(checkinMatch){
-    const parsed = parseDateTimeStr(checkinMatch[1]);
-    if(parsed){
-      document.getElementById('q-checkin-date').value = parsed.date;
-      if(parsed.time) document.getElementById('q-checkin-time').value = parsed.time;
+    if(/Home#1\s*&\s*Home#2/i.test(text) || /BOTH\s*homes/i.test(text)){
+      document.getElementById('q-property').value = 'both'; filledAny = true;
+    } else if(/Home#2/i.test(text)){
+      document.getElementById('q-property').value = 'home2'; filledAny = true;
+    } else if(/Home#1/i.test(text)){
+      document.getElementById('q-property').value = 'home1'; filledAny = true;
     }
-  }
 
-  const checkoutMatch = text.match(/Check-out:\s*(.+)/i);
-  if(checkoutMatch){
-    const parsed = parseDateTimeStr(checkoutMatch[1]);
-    if(parsed){
-      document.getElementById('q-checkout-date').value = parsed.date;
-      if(parsed.time) document.getElementById('q-checkout-time').value = parsed.time;
+    const nameMatch = text.match(/Name\s*:\s*(.+)/i);
+    if(nameMatch){ document.getElementById('q-name').value = nameMatch[1].trim(); filledAny = true; }
+
+    const phoneMatch = text.match(/Phone\s*:\s*(.+)/i);
+    if(phoneMatch){ document.getElementById('q-phone').value = phoneMatch[1].trim(); filledAny = true; }
+
+    const checkinMatch = text.match(/Check-?in\s*:\s*(.+)/i);
+    if(checkinMatch){
+      const parsed = parseDateTimeStr(checkinMatch[1]);
+      if(parsed){
+        document.getElementById('q-checkin-date').value = parsed.date;
+        if(parsed.time) document.getElementById('q-checkin-time').value = parsed.time;
+        filledAny = true;
+      } else missing.push('check-in date');
     }
+
+    const checkoutMatch = text.match(/Check-?out\s*:\s*(.+)/i);
+    if(checkoutMatch){
+      const parsed = parseDateTimeStr(checkoutMatch[1]);
+      if(parsed){
+        document.getElementById('q-checkout-date').value = parsed.date;
+        if(parsed.time) document.getElementById('q-checkout-time').value = parsed.time;
+        filledAny = true;
+      } else missing.push('check-out date');
+    }
+
+    const guestsMatch = text.match(/Guests[^:]*:\s*(\d+)/i);
+    if(guestsMatch){ document.getElementById('q-guests').value = guestsMatch[1]; filledAny = true; }
+
+    if(!filledAny){
+      document.getElementById('q-error').textContent = "Couldn't recognise that message — please fill in the fields below manually.";
+    } else if(missing.length){
+      document.getElementById('q-error').textContent = 'Filled in what we could find, but could not read the ' + missing.join(' and ') + ' — please set that manually below.';
+    } else {
+      document.getElementById('q-error').textContent = 'Filled in what we could find — check the fields below, then add the total amount.';
+    }
+  }catch(err){
+    document.getElementById('q-error').textContent = "Something went wrong reading that message — please fill in the fields below manually.";
   }
-
-  const guestsMatch = text.match(/Guests[^:]*:\s*(\d+)/i);
-  if(guestsMatch) document.getElementById('q-guests').value = guestsMatch[1];
-
-  document.getElementById('q-error').textContent = 'Filled in what we could find — check the fields below, then add the total amount.';
 });
 
 document.getElementById('q-generate').addEventListener('click', async ()=>{
