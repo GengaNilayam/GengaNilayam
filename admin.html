@@ -286,8 +286,8 @@
       <button type="button" id="revenue-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
       <div id="revenue-range-fields" style="display:none;margin-bottom:16px;">
         <div class="field-row">
-          <div class="field"><label>From</label><input type="date" id="revenue-range-from"></div>
-          <div class="field"><label>To</label><input type="date" id="revenue-range-to"></div>
+          <div class="field"><label>From</label><input type="text" id="revenue-range-from" placeholder="DD/MM/YYYY"></div>
+          <div class="field"><label>To</label><input type="text" id="revenue-range-to" placeholder="DD/MM/YYYY"></div>
         </div>
         <button type="button" class="btn btn-primary" id="revenue-range-show" style="width:100%;padding:10px;margin-top:10px;">Show revenue for this range</button>
       </div>
@@ -314,11 +314,11 @@
       <div class="field"><label>Guest name</label><input id="q-name"></div>
       <div class="field"><label>WhatsApp number</label><input id="q-phone" placeholder="98470 12233"></div>
       <div class="field-row">
-        <div class="field"><label>Check-in date</label><input type="date" id="q-checkin-date"></div>
+        <div class="field"><label>Check-in date</label><input type="text" id="q-checkin-date" placeholder="DD/MM/YYYY"></div>
         <div class="field"><label>Check-in time</label><input type="time" id="q-checkin-time" value="12:00"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Check-out date</label><input type="date" id="q-checkout-date"></div>
+        <div class="field"><label>Check-out date</label><input type="text" id="q-checkout-date" placeholder="DD/MM/YYYY"></div>
         <div class="field"><label>Check-out time</label><input type="time" id="q-checkout-time" value="12:00"></div>
       </div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" id="q-guests"></div>
@@ -394,6 +394,27 @@ function fmtDate(s){
   // Built by hand (not toLocaleDateString) so it reads the same - DD/MM/YYYY -
   // everywhere and on every browser, instead of varying by locale.
   return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+}
+// A native <input type="date"> shows and expects whatever date format the
+// browser/device's own regional setting uses (often MM/DD/YYYY), and there
+// is no HTML/CSS/JS override for that - only its underlying value is
+// standardised (always YYYY-MM-DD). The check-in/check-out and revenue
+// date-range fields are plain text inputs instead, so these two convert
+// between that internal ISO value and the DD/MM/YYYY shown on screen,
+// keeping the display consistent no matter whose device it's opened on.
+function isoToDisplay(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-');
+  if(!y || !m || !d) return '';
+  return d + '/' + m + '/' + y;
+}
+function displayToIso(str){
+  if(!str) return '';
+  const m = String(str).trim().match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if(!m) return '';
+  const day = Number(m[1]), month = Number(m[2]), year = Number(m[3]);
+  if(month < 1 || month > 12 || day < 1 || day > 31) return '';
+  return year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
 }
 function fmtTime(t){
   if(!t) return '';
@@ -1405,9 +1426,9 @@ document.getElementById('revenue-range-toggle').addEventListener('click', ()=>{
   document.getElementById('revenue-range-toggle').textContent = showing ? 'Use a custom date range instead' : 'Use a month instead';
 });
 document.getElementById('revenue-range-show').addEventListener('click', ()=>{
-  const from = document.getElementById('revenue-range-from').value;
-  const to = document.getElementById('revenue-range-to').value;
-  if(!from || !to){ alert('Please pick both a from and a to date.'); return; }
+  const from = displayToIso(document.getElementById('revenue-range-from').value);
+  const to = displayToIso(document.getElementById('revenue-range-to').value);
+  if(!from || !to){ alert('Please enter both dates as DD/MM/YYYY.'); return; }
   if(to < from){ alert('The "to" date needs to be after the "from" date.'); return; }
   generateRevenueReport({ mode: 'range', from, to });
 });
@@ -1566,7 +1587,7 @@ document.getElementById('q-parse-btn').addEventListener('click', ()=>{
     if(checkinMatch){
       const parsed = parseDateTimeStr(checkinMatch[1]);
       if(parsed){
-        document.getElementById('q-checkin-date').value = parsed.date;
+        document.getElementById('q-checkin-date').value = isoToDisplay(parsed.date);
         if(parsed.time) document.getElementById('q-checkin-time').value = parsed.time;
         filledAny = true;
       } else missing.push('check-in date');
@@ -1576,7 +1597,7 @@ document.getElementById('q-parse-btn').addEventListener('click', ()=>{
     if(checkoutMatch){
       const parsed = parseDateTimeStr(checkoutMatch[1]);
       if(parsed){
-        document.getElementById('q-checkout-date').value = parsed.date;
+        document.getElementById('q-checkout-date').value = isoToDisplay(parsed.date);
         if(parsed.time) document.getElementById('q-checkout-time').value = parsed.time;
         filledAny = true;
       } else missing.push('check-out date');
@@ -1603,9 +1624,12 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
   const property = document.getElementById('q-property').value;
   const name = document.getElementById('q-name').value.trim();
   const phoneRaw = document.getElementById('q-phone').value.trim();
-  const checkinDate = document.getElementById('q-checkin-date').value;
+  // Converted to ISO right here, once, so every line below (nights math,
+  // the Firestore write, payment/blocking logic) keeps working exactly as
+  // before - only the on-screen field is DD/MM/YYYY, never the stored date.
+  const checkinDate = displayToIso(document.getElementById('q-checkin-date').value);
   const checkinTime = document.getElementById('q-checkin-time').value;
-  const checkoutDate = document.getElementById('q-checkout-date').value;
+  const checkoutDate = displayToIso(document.getElementById('q-checkout-date').value);
   const checkoutTime = document.getElementById('q-checkout-time').value;
   const guests = document.getElementById('q-guests').value;
   const total = Number(document.getElementById('q-total').value);
@@ -1613,7 +1637,7 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
   const balance = total - advance;
 
   if(!name || !checkinDate || !checkoutDate || !total){
-    document.getElementById('q-error').textContent = 'Please fill in guest name, both dates, and a total amount.';
+    document.getElementById('q-error').textContent = 'Please fill in guest name, both dates (as DD/MM/YYYY), and a total amount.';
     return;
   }
 
