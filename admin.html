@@ -469,6 +469,17 @@ function fmtTime(t){
   d.setHours(h, m, 0, 0);
   return d.toLocaleTimeString('en-IN', { hour:'numeric', minute:'2-digit', hour12:true });
 }
+// Parses a plain-text time typed into a prompt() box (no native <input type="time">
+// there) into zero-padded 24-hour "HH:MM", the same internal format every checkinTime/
+// checkoutTime field already uses. Returns null for anything that doesn't look like a
+// valid time, so callers can reject bad input instead of silently storing garbage.
+function parseTimeInput(str){
+  const m = String(str||'').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  const h = Number(m[1]), mi = Number(m[2]);
+  if(h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+  return String(h).padStart(2,'0') + ':' + String(mi).padStart(2,'0');
+}
 
 // Never let a slow or stuck network call block a user-facing action indefinitely.
 function withTimeout(promise, ms){
@@ -1142,6 +1153,111 @@ async function promptUpdateBillAmount(reqId, currentTotal, currentAdvance, refre
   }
 }
 
+// ---- Correcting booking details after the fact (check-in report) ----
+// These six all follow the same shape: prompt, validate, write. The four
+// date/time ones additionally have to keep the calendar in sync - changing
+// when a stay happens must free whatever the OLD dates held and re-block
+// whatever the NEW dates hold, including the early-checkin/late-checkout
+// extra-day rules (a time-only change can add or drop that extra day even
+// when the dates themselves don't move). The unblock must run before the
+// reblock: for an extended stay the two ranges overlap, and unblocking
+// after would incorrectly free the nights the new range still needs.
+async function promptUpdateCheckinDate(reqId, req, refreshFn){
+  const input = prompt('Check-in date (DD/MM/YYYY):', isoToDisplay(req.checkin));
+  if(input === null) return; // cancelled
+  const newIso = displayToIso(input);
+  if(!newIso){ alert('Please enter a valid date as DD/MM/YYYY.'); return; }
+  if(newIso >= req.checkout){
+    alert(`Check-in must be before the current check-out date (${fmtDate(req.checkout)}). If you're moving both dates later, update check-out first.`);
+    return;
+  }
+  try{
+    await unblockDatesForRequest(req);
+    await db.collection('genga_nilayam').doc(reqId).update({ checkin: newIso });
+    await blockDatesForRequest({ ...req, checkin: newIso });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
+async function promptUpdateCheckoutDate(reqId, req, refreshFn){
+  const input = prompt('Check-out date (DD/MM/YYYY):', isoToDisplay(req.checkout));
+  if(input === null) return; // cancelled
+  const newIso = displayToIso(input);
+  if(!newIso){ alert('Please enter a valid date as DD/MM/YYYY.'); return; }
+  if(newIso <= req.checkin){
+    alert(`Check-out must be after the current check-in date (${fmtDate(req.checkin)}). If you're moving both dates earlier, update check-in first.`);
+    return;
+  }
+  try{
+    await unblockDatesForRequest(req);
+    await db.collection('genga_nilayam').doc(reqId).update({ checkout: newIso });
+    await blockDatesForRequest({ ...req, checkout: newIso });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
+async function promptUpdateCheckinTime(reqId, req, refreshFn){
+  const input = prompt('Check-in time (24-hour, e.g. 14:00 - leave blank if unknown):', req.checkinTime || '');
+  if(input === null) return; // cancelled
+  const trimmed = input.trim();
+  const newTime = trimmed === '' ? '' : parseTimeInput(trimmed);
+  if(trimmed !== '' && !newTime){ alert('Please enter a valid time as HH:MM, e.g. 14:00.'); return; }
+  try{
+    await unblockDatesForRequest(req);
+    await db.collection('genga_nilayam').doc(reqId).update({ checkinTime: newTime });
+    await blockDatesForRequest({ ...req, checkinTime: newTime });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
+async function promptUpdateCheckoutTime(reqId, req, refreshFn){
+  const input = prompt('Check-out time (24-hour, e.g. 11:00 - leave blank if unknown):', req.checkoutTime || '');
+  if(input === null) return; // cancelled
+  const trimmed = input.trim();
+  const newTime = trimmed === '' ? '' : parseTimeInput(trimmed);
+  if(trimmed !== '' && !newTime){ alert('Please enter a valid time as HH:MM, e.g. 11:00.'); return; }
+  try{
+    await unblockDatesForRequest(req);
+    await db.collection('genga_nilayam').doc(reqId).update({ checkoutTime: newTime });
+    await blockDatesForRequest({ ...req, checkoutTime: newTime });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
+async function promptUpdatePhone(reqId, req, refreshFn){
+  const input = prompt('Phone number:', req.phone || '');
+  if(input === null) return; // cancelled
+  const newPhone = input.trim();
+  if(!newPhone){ alert('Please enter a phone number.'); return; }
+  try{
+    await db.collection('genga_nilayam').doc(reqId).update({ phone: newPhone });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
+async function promptUpdateGuests(reqId, req, refreshFn){
+  const input = prompt('Number of guests:', req.guests || '');
+  if(input === null) return; // cancelled
+  const n = Number(input);
+  if(!Number.isInteger(n) || n < 1){ alert('Please enter a valid number of guests (1 or more).'); return; }
+  try{
+    await db.collection('genga_nilayam').doc(reqId).update({ guests: String(n) });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
 // Re-outputs an already-invoiced booking as a fresh PDF + WhatsApp message,
 // picking up whatever advance/balance is currently on record. No Firestore
 // writes here, so nothing to await - the download and WhatsApp open happen
@@ -1291,6 +1407,12 @@ async function generateReport(){
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
+          ${r.status === 'invoiced' ? `<button type="button" class="report-checkin-date-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-in date</button>` : ''}
+          ${r.status === 'invoiced' ? `<button type="button" class="report-checkin-time-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-in time</button>` : ''}
+          ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-date-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out date</button>` : ''}
+          ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-time-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out time</button>` : ''}
+          ${r.status === 'invoiced' ? `<button type="button" class="report-phone-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update phone number</button>` : ''}
+          ${r.status === 'invoiced' ? `<button type="button" class="report-guests-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update No. of guests</button>` : ''}
           ${r.status === 'invoiced' ? `<button type="button" class="report-bill-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>` : ''}
           ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
           ${r.status === 'invoiced' ? `<a href="#" class="report-regen-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Regenerate invoice</a>` : ''}
@@ -1299,6 +1421,42 @@ async function generateReport(){
         </div>
       </div>
     `).join('');
+    listEl.querySelectorAll('.report-checkin-date-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
+        if(item) promptUpdateCheckinDate(item.id, item, generateReport);
+      });
+    });
+    listEl.querySelectorAll('.report-checkin-time-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
+        if(item) promptUpdateCheckinTime(item.id, item, generateReport);
+      });
+    });
+    listEl.querySelectorAll('.report-checkout-date-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
+        if(item) promptUpdateCheckoutDate(item.id, item, generateReport);
+      });
+    });
+    listEl.querySelectorAll('.report-checkout-time-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
+        if(item) promptUpdateCheckoutTime(item.id, item, generateReport);
+      });
+    });
+    listEl.querySelectorAll('.report-phone-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
+        if(item) promptUpdatePhone(item.id, item, generateReport);
+      });
+    });
+    listEl.querySelectorAll('.report-guests-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
+        if(item) promptUpdateGuests(item.id, item, generateReport);
+      });
+    });
     listEl.querySelectorAll('.report-cancel-btn').forEach(btn=>{
       btn.addEventListener('click', function(e){
         const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
