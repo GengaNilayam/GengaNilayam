@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>One-time import — 7 invoices — Genga Nilayam</title>
+<style>
+  body{ font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; color:#2a1f1a; }
+  .box{ border:1px solid #ddd; border-radius:10px; padding:20px; margin-top:16px; }
+  button{ padding:12px 20px; font-size:15px; font-weight:600; border-radius:8px; border:2px solid #7a4a2b; background:#7a4a2b; color:#fff; cursor:pointer; }
+  button:disabled{ opacity:0.45; cursor:default; }
+  button.secondary{ background:#fff; color:#7a4a2b; }
+  table{ border-collapse:collapse; width:100%; font-size:13px; margin-top:10px; }
+  th, td{ border:1px solid #e5e0da; padding:6px 8px; text-align:left; vertical-align:top; }
+  th{ background:#f4f0ec; }
+  tr.conflict{ background:#fce4e4; }
+  tr.done{ background:#eaf3ea; }
+  .ok{ color:#166534; font-weight:600; } .err{ color:#b91c1c; font-weight:600; } .muted{ color:#666; }
+  .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .pill.conflict{ background:#fca5a5; color:#7f1d1d; }
+  .pill.new{ background:#bbf7d0; color:#14532d; }
+  .pill.done{ background:#d9d9d9; color:#333; }
+  #status{ margin-top:16px; font-size:14px; line-height:1.6; white-space:pre-line; }
+  code{ background:#f4f0ec; padding:2px 6px; border-radius:4px; }
+</style>
+</head>
+<body>
+<h2>One-time import: 7 invoiced bookings</h2>
+<p class="muted">This page imports the 7 bookings you confirmed (Sivakumar, Anbumalar I K, Praveen, Karthik, Kamaraj, Siva Krishnan, S Veilrajan) into the live system: it creates each as an already-invoiced record and blocks the right calendar dates (including the early-checkin / late-checkout extra-day rule). It's not part of your site — open it once, review the preview below, then confirm. Safe to open more than once: anything already imported is skipped, never duplicated.</p>
+
+<div class="box">
+  <div id="preview">Checking against what's already on file…</div>
+  <table id="tbl" style="display:none;">
+    <thead>
+      <tr>
+        <th>Invoice #</th><th>Guest</th><th>Property</th><th>Check-in</th><th>Check-out</th>
+        <th>Guests</th><th>Total / Advance / Balance</th><th>Dates to block</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="tbl-body"></tbody>
+  </table>
+  <div style="margin-top:18px;">
+    <button id="import-btn" disabled>Import all 7</button>
+    <button class="secondary" id="cancel-btn">Cancel, don't import anything</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCBDayBdvOzBhb76vZN68-nBEvHv5Iol_M",
+    projectId: "genga-nilayam",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const PROPERTIES = {
+    home1: { name: "Ground Floor - Home#1", blockedKey: "blocked_dates_home1" },
+    home2: { name: "Ground Floor - Home#2", blockedKey: "blocked_dates_home2" },
+  };
+
+  // Fully confirmed in chat on 19 Sep 2026 - check-in dates cross-checked
+  // against invoice.csv's own "Date" column (exact match on all 7), times
+  // and check-out dates from the guests' own WhatsApp messages, property
+  // and Kamaraj's check-out time confirmed directly by the owner.
+  const RECORDS = [
+    { invoiceNo:'0497', name:'Sivakumar', phone:'9884300803', property:'home1',
+      checkin:'2026-12-12', checkinTime:'14:00', checkout:'2026-12-14', checkoutTime:'16:00',
+      guests:'10', total:11000, advance:5000, balance:6000, paymentDate:'2026-08-03' },
+    { invoiceNo:'0495', name:'Anbumalar I K', phone:'9176955040', property:'home1',
+      checkin:'2026-12-09', checkinTime:'13:00', checkout:'2026-12-10', checkoutTime:'20:00',
+      guests:'10', total:5000, advance:2500, balance:2500, paymentDate:'2026-08-03' },
+    { invoiceNo:'0514', name:'Praveen', phone:'9944199241', property:'home1',
+      checkin:'2026-11-19', checkinTime:'16:00', checkout:'2026-11-20', checkoutTime:'12:00',
+      guests:'10', total:5000, advance:2500, balance:2500, paymentDate:'2026-09-16' },
+    { invoiceNo:'0509', name:'Karthik', phone:'9786580117', property:'home2',
+      checkin:'2026-11-19', checkinTime:'06:00', checkout:'2026-11-21', checkoutTime:'20:00',
+      guests:'8', total:15000, advance:5000, balance:10000, paymentDate:'2026-09-15' },
+    { invoiceNo:'0481', name:'Kamaraj', phone:'9597744345', property:'home1',
+      checkin:'2026-11-14', checkinTime:'17:00', checkout:'2026-11-15', checkoutTime:'17:00',
+      guests:'10', total:5000, advance:2500, balance:2500, paymentDate:'2026-06-14' },
+    { invoiceNo:'0498', name:'Siva Krishnan', phone:'8760370083', property:'home1',
+      checkin:'2026-10-29', checkinTime:'12:30', checkout:'2026-10-30', checkoutTime:'12:30',
+      guests:'6', total:3350, advance:2000, balance:1350, paymentDate:'2026-08-14' },
+    { invoiceNo:'0479', name:'S Veilrajan', phone:'9442059145', property:'home1',
+      checkin:'2026-10-24', checkinTime:'09:00', checkout:'2026-10-26', checkoutTime:'09:00',
+      guests:'12', total:11000, advance:5000, balance:6000, paymentDate:'2026-06-11' },
+  ];
+
+  function fmtDate(iso){
+    const [y,m,d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+
+  // Exactly mirrors admin.html's blockOneProperty date-range logic (nights
+  // [checkin, checkout), plus the early-checkin/late-checkout 10:30 rule),
+  // so calendar blocking from this import matches what the site itself would do.
+  function datesToBlock(rec){
+    const dates = [];
+    let d = new Date(rec.checkin+'T00:00:00');
+    const end = new Date(rec.checkout+'T00:00:00');
+    while(d < end){
+      dates.push(toKey(d));
+      d.setDate(d.getDate()+1);
+    }
+    if(rec.checkinTime && rec.checkinTime < "10:30"){
+      const prev = new Date(rec.checkin+'T00:00:00');
+      prev.setDate(prev.getDate()-1);
+      dates.push(toKey(prev));
+    }
+    if(rec.checkoutTime && rec.checkoutTime > "10:30"){
+      dates.push(toKey(end));
+    }
+    return dates;
+  }
+  function toKey(dateObj){
+    return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
+  }
+
+  const previewEl = document.getElementById('preview');
+  const tbl = document.getElementById('tbl');
+  const tblBody = document.getElementById('tbl-body');
+  const importBtn = document.getElementById('import-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const statusEl = document.getElementById('status');
+
+  let plan = []; // resolved per-record plan after checking Firestore
+
+  async function buildPreview(){
+    const existingChecks = await Promise.all(RECORDS.map(r => db.collection('genga_nilayam').doc('invoice_'+r.invoiceNo).get()));
+    const blockedSnaps = await Promise.all([
+      db.collection('genga_nilayam').doc(PROPERTIES.home1.blockedKey).get(),
+      db.collection('genga_nilayam').doc(PROPERTIES.home2.blockedKey).get(),
+    ]);
+    const currentBlocked = {
+      home1: new Set(blockedSnaps[0].exists && blockedSnaps[0].data().dates ? blockedSnaps[0].data().dates : []),
+      home2: new Set(blockedSnaps[1].exists && blockedSnaps[1].data().dates ? blockedSnaps[1].data().dates : []),
+    };
+
+    let anyConflict = false;
+    let anyNew = false;
+
+    plan = RECORDS.map((r, i) => {
+      const alreadyImported = existingChecks[i].exists;
+      const toBlock = datesToBlock(r);
+      let conflicts = [];
+      if(!alreadyImported){
+        conflicts = toBlock.filter(k => currentBlocked[r.property].has(k));
+      }
+      if(alreadyImported){
+        // no-op
+      } else if(conflicts.length){
+        anyConflict = true;
+      } else {
+        anyNew = true;
+      }
+      return { rec: r, alreadyImported, toBlock, conflicts };
+    });
+
+    tblBody.innerHTML = plan.map(p => {
+      const r = p.rec;
+      let statusHtml, rowClass = '';
+      if(p.alreadyImported){
+        statusHtml = '<span class="pill done">Already imported</span>';
+        rowClass = 'done';
+      } else if(p.conflicts.length){
+        statusHtml = `<span class="pill conflict">Conflict: ${p.conflicts.map(fmtDate).join(', ')} already blocked by something else</span>`;
+        rowClass = 'conflict';
+      } else {
+        statusHtml = '<span class="pill new">Ready to import</span>';
+      }
+      return `<tr class="${rowClass}">
+        <td>${r.invoiceNo}</td>
+        <td>${r.name}<br><span class="muted">${r.phone}</span></td>
+        <td>${PROPERTIES[r.property].name}</td>
+        <td>${fmtDate(r.checkin)} ${r.checkinTime}</td>
+        <td>${fmtDate(r.checkout)} ${r.checkoutTime}</td>
+        <td>${r.guests}</td>
+        <td>Rs.${r.total} / Rs.${r.advance} / Rs.${r.balance}</td>
+        <td>${p.toBlock.map(fmtDate).join(', ')}</td>
+        <td>${statusHtml}</td>
+      </tr>`;
+    }).join('');
+
+    tbl.style.display = '';
+    if(anyConflict){
+      previewEl.innerHTML = '<span class="err">One or more bookings overlap dates already blocked by something else (highlighted red below). Not importing anything until this is resolved - tell me about the conflict and I\'ll take another look.</span>';
+      importBtn.disabled = true;
+    } else if(!anyNew){
+      previewEl.innerHTML = '<span class="ok">All 7 are already imported. Nothing to do.</span>';
+      importBtn.disabled = true;
+    } else {
+      previewEl.innerHTML = 'Review below, then click "Import all 7" to write the new ones to the system.';
+      importBtn.disabled = false;
+    }
+  }
+
+  importBtn.addEventListener('click', async ()=>{
+    importBtn.disabled = true;
+    cancelBtn.disabled = true;
+    let lines = [];
+    try{
+      const blockedSnaps = await Promise.all([
+        db.collection('genga_nilayam').doc(PROPERTIES.home1.blockedKey).get(),
+        db.collection('genga_nilayam').doc(PROPERTIES.home2.blockedKey).get(),
+      ]);
+      const blockedSets = {
+        home1: new Set(blockedSnaps[0].exists && blockedSnaps[0].data().dates ? blockedSnaps[0].data().dates : []),
+        home2: new Set(blockedSnaps[1].exists && blockedSnaps[1].data().dates ? blockedSnaps[1].data().dates : []),
+      };
+
+      for(const p of plan){
+        const r = p.rec;
+        if(p.alreadyImported){ lines.push(`${r.name} (${r.invoiceNo}): already imported, skipped.`); continue; }
+        if(p.conflicts.length){ lines.push(`${r.name} (${r.invoiceNo}): SKIPPED - date conflict.`); continue; }
+
+        const reqId = 'invoice_' + r.invoiceNo;
+        const reqData = {
+          name: r.name, phone: r.phone, property: r.property, propertyName: PROPERTIES[r.property].name,
+          checkin: r.checkin, checkout: r.checkout, checkinTime: r.checkinTime, checkoutTime: r.checkoutTime,
+          guests: r.guests, status: 'invoiced', invoiceNo: r.invoiceNo,
+          total: r.total, advance: r.advance, balance: r.balance,
+          invoicedAt: new Date(r.paymentDate+'T00:00:00').toISOString(),
+          submittedAt: new Date(r.paymentDate+'T00:00:00').toISOString(),
+        };
+        await db.collection('genga_nilayam').doc(reqId).set(reqData);
+        p.toBlock.forEach(k => blockedSets[r.property].add(k));
+        lines.push(`${r.name} (${r.invoiceNo}): imported - ${PROPERTIES[r.property].name}, blocked ${p.toBlock.map(fmtDate).join(', ')}.`);
+      }
+
+      await db.collection('genga_nilayam').doc(PROPERTIES.home1.blockedKey).set({ dates: [...blockedSets.home1] });
+      await db.collection('genga_nilayam').doc(PROPERTIES.home2.blockedKey).set({ dates: [...blockedSets.home2] });
+
+      statusEl.innerHTML = '<span class="ok">Done.</span>\n' + lines.join('\n');
+      await buildPreview();
+    }catch(e){
+      statusEl.innerHTML = '<span class="err">Something went wrong: ' + (e.message || e) + '</span>\n' + lines.join('\n');
+      importBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  });
+
+  cancelBtn.addEventListener('click', ()=>{
+    importBtn.disabled = true;
+    statusEl.innerHTML = '<span class="muted">Cancelled - nothing was imported.</span>';
+  });
+
+  buildPreview();
+</script>
+</body>
+</html>
