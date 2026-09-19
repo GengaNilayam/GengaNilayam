@@ -203,6 +203,7 @@
   .cal-day.avail:hover{ background:var(--sky); }
   .cal-day.selected{ background:var(--wood); color:#fff; font-weight:600; }
   .cal-day.in-range{ background:var(--sky); }
+  .cal-day.today{ border:2px solid var(--deep-2); }
   .cal-hint{ font-size:12px; color:var(--ink-soft); }
   .cal-actions{ margin-top:16px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 
@@ -823,6 +824,7 @@ function renderCalendarGrid(gridEl, titleEl, year, month, opts){
     else if(isBlocked) cls += ' blocked';
     else cls += ' avail';
 
+    if(key === today) cls += ' today';
     if(opts.selStart && key === opts.selStart) cls += ' selected';
     if(opts.selEnd && key === opts.selEnd) cls += ' selected';
     if(opts.selStart && opts.selEnd && key > opts.selStart && key < opts.selEnd) cls += ' in-range';
@@ -874,7 +876,9 @@ document.getElementById('cal-confirm').addEventListener('click', ()=>{
   if(!selectStart) return;
   if(calendarTarget === 'checkin'){
     const existingCheckout = document.getElementById('f-checkout').value;
-    if(existingCheckout && existingCheckout <= selectStart){
+    // Only clear an existing checkout if it's now strictly before the new
+    // checkin - equal is fine, that's a same-day (day-use) booking.
+    if(existingCheckout && existingCheckout < selectStart){
       document.getElementById('f-checkout').value = '';
       document.getElementById('f-checkout-display').value = '';
     }
@@ -882,8 +886,10 @@ document.getElementById('cal-confirm').addEventListener('click', ()=>{
     document.getElementById('f-checkin-display').value = fmtDate(selectStart);
   } else {
     const checkinVal = document.getElementById('f-checkin').value;
-    if(checkinVal && selectStart <= checkinVal){
-      alert('Check-out date must be after your check-in date.');
+    // Same-day checkout is allowed (day-use booking, billed as 1 night below);
+    // only a checkout strictly before checkin is rejected.
+    if(checkinVal && selectStart < checkinVal){
+      alert('Check-out date must be on or after your check-in date.');
       return;
     }
     if(checkinVal){

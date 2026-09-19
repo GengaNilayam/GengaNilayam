@@ -775,6 +775,11 @@ async function blockOneProperty(propKey, req){
   const dates = new Set(doc.exists && doc.data().dates ? doc.data().dates : []);
   let d = new Date(req.checkin+'T00:00:00');
   const end = new Date(req.checkout+'T00:00:00');
+  // Same-day (day-use) booking: the range loop below covers nothing since
+  // start === end, so block that single date outright rather than leaving
+  // it to the early-checkin/late-checkout time rules, which don't fire for
+  // every time combination.
+  if(req.checkin === req.checkout) dates.add(req.checkin);
   while(d < end){
     dates.add(toKey(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setDate(d.getDate()+1);
@@ -812,6 +817,9 @@ async function unblockOneProperty(propKey, req){
   const dates = new Set(doc.exists && doc.data().dates ? doc.data().dates : []);
   let d = new Date(req.checkin+'T00:00:00');
   const end = new Date(req.checkout+'T00:00:00');
+  // Mirrors the same-day direct block in blockOneProperty, so cancelling a
+  // same-day booking frees exactly what it held.
+  if(req.checkin === req.checkout) dates.delete(req.checkin);
   while(d < end){
     dates.delete(toKey(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setDate(d.getDate()+1);
@@ -1177,8 +1185,9 @@ async function promptUpdateCheckinDate(reqId, req, refreshFn){
   if(input === null) return; // cancelled
   const newIso = displayToIso(input);
   if(!newIso){ alert('Please enter a valid date as DD/MM/YYYY.'); return; }
-  if(newIso >= req.checkout){
-    alert(`Check-in must be before the current check-out date (${fmtDate(req.checkout)}). If you're moving both dates later, update check-out first.`);
+  // Equal to checkout is fine (a same-day/day-use booking); only crossing past it is rejected.
+  if(newIso > req.checkout){
+    alert(`Check-in must be on or before the current check-out date (${fmtDate(req.checkout)}). If you're moving both dates later, update check-out first.`);
     return;
   }
   try{
@@ -1196,8 +1205,9 @@ async function promptUpdateCheckoutDate(reqId, req, refreshFn){
   if(input === null) return; // cancelled
   const newIso = displayToIso(input);
   if(!newIso){ alert('Please enter a valid date as DD/MM/YYYY.'); return; }
-  if(newIso <= req.checkin){
-    alert(`Check-out must be after the current check-in date (${fmtDate(req.checkin)}). If you're moving both dates earlier, update check-in first.`);
+  // Equal to checkin is fine (a same-day/day-use booking); only crossing before it is rejected.
+  if(newIso < req.checkin){
+    alert(`Check-out must be on or after the current check-in date (${fmtDate(req.checkin)}). If you're moving both dates earlier, update check-in first.`);
     return;
   }
   try{
