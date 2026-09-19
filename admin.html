@@ -203,6 +203,9 @@
   .cal-day.avail:hover{ background:var(--sky); }
   .cal-day.selected{ background:var(--wood); color:#fff; font-weight:600; }
   .cal-day.in-range{ background:var(--sky); }
+  /* A ring, not a background, so it stays visible no matter what other
+     state (blocked/selected/muhurtham) the same day also has. */
+  .cal-day.today{ border:2px solid var(--deep-2); }
   .cal-hint{ font-size:12px; color:var(--ink-soft); }
   .cal-actions{ margin-top:16px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 
@@ -654,6 +657,7 @@ function renderCalendarGrid(gridEl, titleEl, year, month, opts, blockedSet){
     else if(isBlocked) cls += ' blocked';
     else cls += ' avail';
 
+    if(key === today) cls += ' today';
     if(opts.selStart && key === opts.selStart) cls += ' selected';
     if(opts.selEnd && key === opts.selEnd) cls += ' selected';
     if(opts.selStart && opts.selEnd && key > opts.selStart && key < opts.selEnd) cls += ' in-range';
@@ -718,7 +722,13 @@ function renderAdminCalendar(){
     btn.disabled = false;
     btn.addEventListener('click', async ()=>{
       const key = btn.dataset.key;
-      if(blockedDates.has(key)) blockedDates.delete(key);
+      const propName = PROPERTIES[adminProperty] ? PROPERTIES[adminProperty].name : adminProperty;
+      const isBlocked = blockedDates.has(key);
+      const msg = isBlocked
+        ? `Open ${fmtDate(key)} on ${propName} for booking? It will become available again.`
+        : `Block ${fmtDate(key)} on ${propName}? It will no longer be available for guest bookings.`;
+      if(!confirm(msg)) return;
+      if(isBlocked) blockedDates.delete(key);
       else blockedDates.add(key);
       await saveBlockedDates(adminProperty);
       renderAdminCalendar();
@@ -2094,9 +2104,11 @@ function renderDatePickerGrid(){
     titleEl.textContent = first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
     let html = DOW.map(d => `<div class="cal-dow">${d}</div>`).join('');
     for(let i = 0; i < startDow; i++) html += `<div class="cal-day empty"></div>`;
+    const today = todayKey();
     for(let d = 1; d <= daysInMonth; d++){
       const key = toKey(qdpYear, qdpMonth, d);
-      const cls = 'cal-day avail' + (key === selectedIso ? ' selected' : '');
+      let cls = 'cal-day avail' + (key === selectedIso ? ' selected' : '');
+      if(key === today) cls += ' today';
       html += `<button type="button" class="${cls}" data-key="${key}">${d}</button>`;
     }
     gridEl.innerHTML = html;
