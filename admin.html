@@ -1171,6 +1171,26 @@ async function promptUpdateBillAmount(reqId, currentTotal, currentAdvance, refre
   }
 }
 
+// One-click shortcut for the common case where the guest has paid the full
+// bill - sets advance equal to the total and balance to zero, without
+// needing to type the amount in via promptUpdateAdvance.
+async function promptMarkAsPaid(reqId, total, refreshFn){
+  const amt = Number(total) || 0;
+  if(!confirm(`Mark as fully paid? This sets the amount paid to Rs. ${amt.toLocaleString('en-IN')} (the full bill) and the balance to Rs. 0.`)) return;
+  try{
+    await db.collection('genga_nilayam').doc(reqId).update({ advance: amt, balance: 0 });
+    // Same as promptUpdateAdvance: confirm the booking's dates are blocked,
+    // in case this is also the first real payment on record.
+    if(amt > 0){
+      const doc = await db.collection('genga_nilayam').doc(reqId).get();
+      if(doc.exists) await blockDatesForRequest({ id: reqId, ...doc.data() });
+    }
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
 // ---- Correcting booking details after the fact (check-in report) ----
 // These six all follow the same shape: prompt, validate, write. The four
 // date/time ones additionally have to keep the calendar in sync - changing
@@ -1435,6 +1455,7 @@ async function generateReport(){
           ${r.status === 'invoiced' ? `<button type="button" class="report-guests-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update No. of guests</button>` : ''}
           ${r.status === 'invoiced' ? `<button type="button" class="report-bill-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>` : ''}
           ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
+          ${r.status === 'invoiced' && (r.balance != null ? Number(r.balance) : Number(r.total)||0) > 0 ? `<button type="button" class="report-markpaid-btn" data-req-id="${r.id}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Mark as paid</button>` : ''}
           ${r.status === 'invoiced' ? `<a href="#" class="report-regen-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Regenerate invoice</a>` : ''}
           ${r.status === 'invoiced' ? `<a href="#" class="report-cancel-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Cancel booking</a>` : ''}
           <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
@@ -1503,6 +1524,13 @@ async function generateReport(){
       btn.addEventListener('click', ()=> promptUpdateAdvance(
         btn.getAttribute('data-req-id'),
         Number(btn.getAttribute('data-advance')),
+        Number(btn.getAttribute('data-total')),
+        generateReport
+      ));
+    });
+    listEl.querySelectorAll('.report-markpaid-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> promptMarkAsPaid(
+        btn.getAttribute('data-req-id'),
         Number(btn.getAttribute('data-total')),
         generateReport
       ));
