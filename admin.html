@@ -387,11 +387,11 @@
       <div class="cal-title" style="text-align:left;margin-bottom:14px;">Create invoice</div>
       <div class="field"><label>Guest name</label><input id="inv-name"></div>
       <div class="field"><label>Guest WhatsApp number</label><input id="inv-phone"></div>
-      <div class="field"><label>Property</label><input id="inv-property" readonly></div>
-      <div class="field"><label>Check-in</label><input id="inv-checkin" readonly></div>
-      <div class="field"><label>Check-out</label><input id="inv-checkout" readonly></div>
-      <div class="field"><label>Nights</label><input id="inv-nights" readonly></div>
-      <div class="field"><label>Guests</label><input id="inv-guests" readonly></div>
+      <div class="field"><label>Property</label><input id="inv-property"></div>
+      <div class="field"><label>Check-in</label><input id="inv-checkin"></div>
+      <div class="field"><label>Check-out</label><input id="inv-checkout"></div>
+      <div class="field"><label>Nights</label><input type="number" min="1" id="inv-nights"></div>
+      <div class="field"><label>Guests</label><input id="inv-guests"></div>
       <div class="field"><label>Price per night (Rs.)</label><input type="number" id="inv-rate" placeholder="e.g. 2500"></div>
       <div class="field"><label>Total amount (Rs.)</label><input type="number" id="inv-total" placeholder="auto-fills from rate, editable"></div>
       <div class="field"><label>Advance paid (Rs.)</label><input type="number" id="inv-advance" placeholder="0"></div>
@@ -498,9 +498,15 @@ function todayKey(){
   const t = new Date();
   return toKey(t.getFullYear(), t.getMonth(), t.getDate());
 }
-function nightsBetween(checkin, checkout){
+// Counts days by 24-hour block: up to 24h elapsed = 1 day, >24h up to 48h = 2,
+// and so on. Falls back to a pure calendar-date difference when either time
+// is missing, which reproduces the old date-only behaviour exactly.
+function nightsBetween(checkin, checkinTime, checkout, checkoutTime){
   if(!checkin || !checkout) return null;
-  return Math.max(1, Math.round((new Date(checkout+'T00:00:00') - new Date(checkin+'T00:00:00')) / 86400000));
+  const inMs = new Date(checkin + 'T' + (checkinTime || '00:00') + ':00').getTime();
+  const outMs = new Date(checkout + 'T' + (checkoutTime || '00:00') + ':00').getTime();
+  const hours = (outMs - inMs) / 3600000;
+  return Math.max(1, Math.ceil(hours / 24));
 }
 
 let legacyMigrated = false;
@@ -897,7 +903,7 @@ async function loadPendingRequests(){
     listEl.innerHTML = requests.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkout) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkout)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
@@ -958,7 +964,7 @@ function openInvoiceView(req){
   document.getElementById('inv-checkin').value = fmtDate(req.checkin) + (req.checkinTime ? ' at ' + fmtTime(req.checkinTime) : '');
   document.getElementById('inv-checkout').value = fmtDate(req.checkout) + (req.checkoutTime ? ' at ' + fmtTime(req.checkoutTime) : '');
   document.getElementById('inv-guests').value = req.guests || '';
-  const nights = Math.max(1, Math.round((new Date(req.checkout+'T00:00:00') - new Date(req.checkin+'T00:00:00')) / 86400000));
+  const nights = nightsBetween(req.checkin, req.checkinTime, req.checkout, req.checkoutTime);
   document.getElementById('inv-nights').value = nights;
   document.getElementById('inv-rate').value = '';
   document.getElementById('inv-total').value = '';
@@ -967,11 +973,15 @@ function openInvoiceView(req){
   document.getElementById('inv-links').style.display = 'none';
 }
 
-document.getElementById('inv-rate').addEventListener('input', ()=>{
+// Nights is now an editable field (not just a read-only computed one), so
+// the total needs to stay in sync whichever of the two the admin changes.
+function recomputeInvTotal(){
   const rate = Number(document.getElementById('inv-rate').value) || 0;
   const nights = Number(document.getElementById('inv-nights').value) || 0;
   document.getElementById('inv-total').value = (rate * nights) || '';
-});
+}
+document.getElementById('inv-rate').addEventListener('input', recomputeInvTotal);
+document.getElementById('inv-nights').addEventListener('input', recomputeInvTotal);
 
 document.getElementById('inv-back').addEventListener('click', async ()=>{
   document.getElementById('admin-invoice-view').style.display = 'none';
@@ -1311,7 +1321,7 @@ function regenerateInvoicePDF(r, e){
   const propertyName = r.propertyName || r.property || '';
   const checkinDisplay = fmtDate(r.checkin) + (r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : '');
   const checkoutDisplay = fmtDate(r.checkout) + (r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : '');
-  const nights = Math.max(1, Math.round((new Date(r.checkout+'T00:00:00') - new Date(r.checkin+'T00:00:00')) / 86400000));
+  const nights = nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime);
   const paymentAmount = advance > 0 ? balance : computePaymentAmount(total, r.checkin);
   const upiLink = buildUpiLink(paymentAmount, 'Genga Nilayam ' + invoiceNo);
 
@@ -1442,7 +1452,7 @@ async function generateReport(){
     listEl.innerHTML = all.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkout) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkout)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</div>
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
@@ -1619,7 +1629,7 @@ async function generateRevenueReport(opts){
     html += items.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.nights || nightsBetween(r.checkin, r.checkout) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkout)) === 1 ? '' : 's'}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'}</div>
         <div style="font-size:13px;color:var(--ink-soft);">Bill value: Rs. ${r.amount.toLocaleString('en-IN')} &middot; Paid: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" class="revenue-bill-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>
@@ -1917,7 +1927,7 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
     return;
   }
 
-  const nights = Math.max(1, Math.round((new Date(checkoutDate+'T00:00:00') - new Date(checkinDate+'T00:00:00')) / 86400000));
+  const nights = nightsBetween(checkinDate, checkinTime, checkoutDate, checkoutTime);
   const propertyName = property === 'both' ? 'Ground Floor - Home#1 & Home#2' : PROPERTIES[property].name;
   const checkinDisplay = fmtDate(checkinDate) + (checkinTime ? ' at ' + fmtTime(checkinTime) : '');
   const checkoutDisplay = fmtDate(checkoutDate) + (checkoutTime ? ' at ' + fmtTime(checkoutTime) : '');
