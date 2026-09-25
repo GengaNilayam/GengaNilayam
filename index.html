@@ -546,16 +546,32 @@
         <input id="f-checkin-display" readonly placeholder="Select check-in date" style="cursor:pointer;margin-bottom:10px;">
         <input type="hidden" id="f-checkin">
         <label>Time</label>
-        <input type="time" id="f-checkin-time" value="12:00">
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkin-hh" placeholder="06" value="12" style="width:54px;text-align:center;padding:11px 6px;">
+          <span style="font-weight:700;color:var(--ink-soft);">:</span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkin-mm" placeholder="00" value="00" style="width:54px;text-align:center;padding:11px 6px;">
+          <select id="f-checkin-ampm" style="padding:11px 8px;border:1px solid var(--line);border-radius:9px;background:#fff;font-family:'Inter';font-size:14.5px;color:var(--ink);">
+            <option value="AM">AM</option>
+            <option value="PM" selected>PM</option>
+          </select>
+        </div>
       </div>
       <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;">
         <label style="font-weight:600;">Check-out date</label>
         <input id="f-checkout-display" readonly placeholder="Select check-out date" style="cursor:pointer;margin-bottom:10px;">
         <input type="hidden" id="f-checkout">
         <label>Time</label>
-        <input type="time" id="f-checkout-time" value="12:00">
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkout-hh" placeholder="12" value="12" style="width:54px;text-align:center;padding:11px 6px;">
+          <span style="font-weight:700;color:var(--ink-soft);">:</span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkout-mm" placeholder="00" value="00" style="width:54px;text-align:center;padding:11px 6px;">
+          <select id="f-checkout-ampm" style="padding:11px 8px;border:1px solid var(--line);border-radius:9px;background:#fff;font-family:'Inter';font-size:14.5px;color:var(--ink);">
+            <option value="AM">AM</option>
+            <option value="PM" selected>PM</option>
+          </select>
+        </div>
       </div>
-      <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4 PM check-in → 4 PM check-out the next day).</div>
+      <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4:00 PM check-in → 4:00 PM check-out the next day).</div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" max="10" id="f-guests" value="2"></div>
       <div class="field"><label>Message (optional)</label><textarea id="f-message" placeholder="Anything else we should know?"></textarea></div>
       <a class="submit-btn" id="submit-btn" href="#" style="display:block;">Booking request for Home#1</a>
@@ -676,6 +692,48 @@ function toKey(y,m,d){
 function todayKey(){
   const t = new Date();
   return toKey(t.getFullYear(), t.getMonth(), t.getDate());
+}
+
+// Converts a composed "HH:MM AM/PM" string to zero-padded 24-hour "HH:MM" -
+// the same internal format every checkinTime/checkoutTime field has always
+// used - so nights math, the early-checkin/late-checkout blocking rules, and
+// the muhurtham check all keep working unchanged. Returns null for anything
+// that doesn't match.
+function parseTime12h(str){
+  const m = String(str||'').trim().match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
+  if(!m) return null;
+  let h = Number(m[1]); const mi = Number(m[2]);
+  if(h < 1 || h > 12 || mi < 0 || mi > 59) return null;
+  const ap = m[3].toUpperCase();
+  if(ap === 'AM'){ if(h === 12) h = 0; } else { if(h !== 12) h += 12; }
+  return String(h).padStart(2,'0') + ':' + String(mi).padStart(2,'0');
+}
+
+// Time is entered as three keypad-friendly controls (hour box, minute box,
+// AM/PM dropdown) rather than one free-text field, so a plain numeric
+// keyboard shows up on mobile for the digits - a single text field can't do
+// that, since no numeric keypad includes a ":" key or letters for AM/PM.
+// Reads the three back into the same "HH:MM AM/PM" shape parseTime12h
+// expects. Returns '' if left entirely blank (time is optional), or null if
+// only partially filled in.
+function readTime12(hhId, mmId, ampmId){
+  const hhRaw = document.getElementById(hhId).value.trim();
+  const mmRaw = document.getElementById(mmId).value.trim();
+  const ampm = document.getElementById(ampmId).value;
+  if(hhRaw === '' && mmRaw === '') return '';
+  if(hhRaw === '' || mmRaw === '' || !/^\d{1,2}$/.test(hhRaw) || !/^\d{1,2}$/.test(mmRaw)) return null;
+  return hhRaw.padStart(2,'0') + ':' + mmRaw.padStart(2,'0') + ' ' + ampm;
+}
+
+// Counts days by 24-hour block: up to 24h elapsed = 1 day, >24h up to 48h = 2,
+// and so on. Falls back to a pure calendar-date difference when either time
+// is missing, which reproduces the old date-only behaviour exactly.
+function nightsBetween(checkinDate, checkinTime, checkoutDate, checkoutTime){
+  if(!checkinDate || !checkoutDate) return null;
+  const inMs = new Date(checkinDate + 'T' + (checkinTime || '00:00') + ':00').getTime();
+  const outMs = new Date(checkoutDate + 'T' + (checkoutTime || '00:00') + ':00').getTime();
+  const hours = (outMs - inMs) / 3600000;
+  return Math.max(1, Math.ceil(hours / 24));
 }
 
 let legacyMigrated = false;
@@ -979,8 +1037,13 @@ document.getElementById('cal-confirm').addEventListener('click', ()=>{
 });
 
 /* ---------- 24-hour check-in: departure time defaults to match arrival ---------- */
-document.getElementById('f-checkin-time').addEventListener('input', ()=>{
-  document.getElementById('f-checkout-time').value = document.getElementById('f-checkin-time').value;
+['f-checkin-hh','f-checkin-mm'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', ()=>{
+    document.getElementById(id.replace('checkin','checkout')).value = document.getElementById(id).value;
+  });
+});
+document.getElementById('f-checkin-ampm').addEventListener('change', ()=>{
+  document.getElementById('f-checkout-ampm').value = document.getElementById('f-checkin-ampm').value;
 });
 
 /* ---------- Booking submit ---------- */
@@ -989,15 +1052,22 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   const phone = document.getElementById('f-phone').value.trim();
   const checkin = document.getElementById('f-checkin').value;
   const checkout = document.getElementById('f-checkout').value;
-  const checkinTime = document.getElementById('f-checkin-time').value;
-  const checkoutTime = document.getElementById('f-checkout-time').value;
+  const checkinRaw = readTime12('f-checkin-hh','f-checkin-mm','f-checkin-ampm');
+  const checkoutRaw = readTime12('f-checkout-hh','f-checkout-mm','f-checkout-ampm');
   const guests = document.getElementById('f-guests').value;
   const message = document.getElementById('f-message').value.trim();
 
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
-  const nights = Math.max(1, Math.round((new Date(checkout+'T00:00:00') - new Date(checkin+'T00:00:00')) / 86400000));
+  if(checkinRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-in time, or leave both blank.'); return; }
+  const checkinTime = checkinRaw ? parseTime12h(checkinRaw) : '';
+  if(checkinRaw && !checkinTime){ e.preventDefault(); alert('Please enter a valid check-in time (hour 1-12, minute 00-59).'); return; }
+  if(checkoutRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-out time, or leave both blank.'); return; }
+  const checkoutTime = checkoutRaw ? parseTime12h(checkoutRaw) : '';
+  if(checkoutRaw && !checkoutTime){ e.preventDefault(); alert('Please enter a valid check-out time (hour 1-12, minute 00-59).'); return; }
+
+  const nights = nightsBetween(checkin, checkinTime, checkout, checkoutTime);
 
   const peak = checkMuhurthamPeak(checkin, checkinTime, currentProperty, Number(guests));
   if(peak.pricingApplies && peak.underMinimum){
@@ -1042,8 +1112,8 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   const phone = document.getElementById('f-phone').value.trim();
   const checkin = document.getElementById('f-checkin').value;
   const checkout = document.getElementById('f-checkout').value;
-  const checkinTime = document.getElementById('f-checkin-time').value;
-  const checkoutTime = document.getElementById('f-checkout-time').value;
+  const checkinRaw = readTime12('f-checkin-hh','f-checkin-mm','f-checkin-ampm');
+  const checkoutRaw = readTime12('f-checkout-hh','f-checkout-mm','f-checkout-ampm');
   const guests = document.getElementById('f-guests').value;
   const message = document.getElementById('f-message').value.trim();
   const bothName = 'Ground Floor - Home#1 & Home#2';
@@ -1051,7 +1121,14 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
-  const nights = Math.max(1, Math.round((new Date(checkout+'T00:00:00') - new Date(checkin+'T00:00:00')) / 86400000));
+  if(checkinRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-in time, or leave both blank.'); return; }
+  const checkinTime = checkinRaw ? parseTime12h(checkinRaw) : '';
+  if(checkinRaw && !checkinTime){ e.preventDefault(); alert('Please enter a valid check-in time (hour 1-12, minute 00-59).'); return; }
+  if(checkoutRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-out time, or leave both blank.'); return; }
+  const checkoutTime = checkoutRaw ? parseTime12h(checkoutRaw) : '';
+  if(checkoutRaw && !checkoutTime){ e.preventDefault(); alert('Please enter a valid check-out time (hour 1-12, minute 00-59).'); return; }
+
+  const nights = nightsBetween(checkin, checkinTime, checkout, checkoutTime);
 
   const peak = checkMuhurthamPeak(checkin, checkinTime, 'both', Number(guests));
   if(peak.pricingApplies && peak.underMinimum){
