@@ -459,6 +459,15 @@ function fmtDate(s){
   // everywhere and on every browser, instead of varying by locale.
   return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
 }
+const REPORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Used only in the report/list views (check-in report, revenue report, pending
+// requests, next check-in) - e.g. "27Sep2026". Everywhere else (invoices,
+// WhatsApp messages, date pickers) keeps the DD/MM/YYYY of fmtDate() above.
+function fmtDateReport(s){
+  if(!s) return '';
+  const d = new Date(s+'T00:00:00');
+  return String(d.getDate()).padStart(2,'0') + REPORT_MONTHS[d.getMonth()] + d.getFullYear();
+}
 // A native <input type="date"> shows and expects whatever date format the
 // browser/device's own regional setting uses (often MM/DD/YYYY), and there
 // is no HTML/CSS/JS override for that - only its underlying value is
@@ -953,8 +962,8 @@ async function loadNextCheckins(){
       const guestNumber = normalizePhone(r.phone || '');
       return `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
-        <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);">${r.phone || ''}</div>
         ${guestNumber ? `<div style="margin-top:8px;"><a href="https://api.whatsapp.com/send?phone=${guestNumber}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a></div>` : ''}
       </div>`;
@@ -984,8 +993,8 @@ async function loadPendingRequests(){
     }
     listEl.innerHTML = requests.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
-        <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDateReport(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;">
           <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
@@ -1535,8 +1544,8 @@ async function generateReport(){
     }
     listEl.innerHTML = all.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
-        <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDateReport(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</div>
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
@@ -1714,8 +1723,8 @@ async function generateRevenueReport(opts){
     html += `<div style="font-size:14px;font-weight:600;margin-bottom:16px;">Total paid: Rs. ${totalPaid.toLocaleString('en-IN')} &middot; Balance: Rs. ${totalBalance.toLocaleString('en-IN')}</div>`;
     html += items.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
-        <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)} &rarr; ${fmtDate(r.checkout)} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'}</div>
+        <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)} &rarr; ${fmtDateReport(r.checkout)} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
         <div style="font-size:13px;color:var(--ink-soft);">Bill value: Rs. ${r.amount.toLocaleString('en-IN')} &middot; Paid: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" class="revenue-bill-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>
