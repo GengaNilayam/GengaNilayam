@@ -905,9 +905,10 @@ async function loadPendingRequests(){
         <div style="font-weight:600;">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''}</div>
         <div style="font-size:13px;color:var(--ink-soft);">${fmtDate(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDate(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
-        <div style="display:flex;gap:10px;margin-top:8px;">
+        <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;">
           <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
           <a href="#" class="admin-reject-btn" data-req-id="${r.id}" style="display:inline-block;padding:8px 14px;font-size:13px;font-weight:600;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;text-decoration:none;">Reject</a>
+          ${normalizePhone(r.phone || '') ? `<a href="https://api.whatsapp.com/send?phone=${normalizePhone(r.phone || '')}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a>` : ''}
         </div>
       </div>
     `).join('');
@@ -1468,6 +1469,7 @@ async function generateReport(){
           ${r.status === 'invoiced' && (r.balance != null ? Number(r.balance) : Number(r.total)||0) > 0 ? `<button type="button" class="report-markpaid-btn" data-req-id="${r.id}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Mark as paid</button>` : ''}
           ${r.status === 'invoiced' ? `<a href="#" class="report-regen-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Regenerate invoice</a>` : ''}
           ${r.status === 'invoiced' ? `<a href="#" class="report-cancel-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Cancel booking</a>` : ''}
+          ${normalizePhone(r.phone || '') ? `<a href="https://api.whatsapp.com/send?phone=${normalizePhone(r.phone || '')}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a>` : ''}
           <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
         </div>
       </div>
@@ -1615,7 +1617,7 @@ async function generateRevenueReport(opts){
       totalPaid += adv;
       totalBalance += bal;
       count += 1;
-      items.push({ id: doc.id, name: data.name, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt, advance: adv, balance: bal });
+      items.push({ id: doc.id, name: data.name, phone: data.phone, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt, advance: adv, balance: bal });
     });
     items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
 
@@ -1634,6 +1636,7 @@ async function generateRevenueReport(opts){
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" class="revenue-bill-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>
           <button type="button" class="revenue-paid-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update paid amount</button>
+          ${normalizePhone(r.phone || '') ? `<a href="https://api.whatsapp.com/send?phone=${normalizePhone(r.phone || '')}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a>` : ''}
           <button type="button" class="revenue-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
         </div>
       </div>
