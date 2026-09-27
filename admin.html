@@ -280,7 +280,8 @@
     <div id="admin-cal-view" style="display:none;">
       <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate check-in report</button>
       <button type="button" class="btn btn-primary" id="admin-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate Revenue report</button>
-      <button type="button" class="btn btn-primary" id="admin-quick-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Quick Invoice</button>
+      <button type="button" class="btn btn-primary" id="admin-quick-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Quick Invoice</button>
+      <button type="button" class="btn btn-primary" id="admin-ebsplit-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">EB Split</button>
       <div id="admin-next-checkin-section" style="margin-bottom:18px;">
         <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Next check-in</div>
         <div id="admin-next-checkin-list" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -1815,6 +1816,11 @@ document.getElementById('revenue-back').addEventListener('click', async ()=>{
   document.getElementById('admin-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadNextCheckins();
+});
+
+/* ---------- EB Split: opens the separate EB Bill Split page ---------- */
+document.getElementById('admin-ebsplit-btn').addEventListener('click', ()=>{
+  window.open('https://claude.ai/artifact/TpkzVQZ1wEki5Eh7YotGoR', '_blank');
 });
 
 /* ---------- Quick Invoice: manual entry for bookings made outside the site ---------- */
