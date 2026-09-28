@@ -282,6 +282,10 @@
       <button type="button" class="btn btn-primary" id="admin-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-quick-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Quick Invoice</button>
       <button type="button" class="btn btn-primary" id="admin-ebsplit-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">EB Split</button>
+      <div id="admin-today-checkin-section" style="margin-bottom:18px;">
+        <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Today's check-in</div>
+        <div id="admin-today-checkin-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
       <div id="admin-next-checkin-section" style="margin-bottom:18px;">
         <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Next check-in</div>
         <div id="admin-next-checkin-list" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -729,6 +733,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   await loadAllBlockedDates();
   renderAdminCalendar();
   await loadPendingRequests();
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 document.getElementById('admin-cal-prev').addEventListener('click', ()=>{
@@ -936,6 +941,42 @@ function cancelBooking(r, e){
 }
 
 /** Shows every upcoming (invoiced) check-in that falls on the soonest date, across both properties. */
+// Shared by Today's check-in and Next check-in - both show one card per
+// booking, headlined by the check-in date/time, with a Message Guest link.
+function checkinCardHtml(r){
+  const guestNumber = normalizePhone(r.phone || '');
+  return `
+  <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+    <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''}</div>
+    <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.guests || '?'} guests</div>
+    <div style="font-size:12px;color:var(--ink-soft);">${r.phone || ''}</div>
+    ${guestNumber ? `<div style="margin-top:8px;"><a href="https://api.whatsapp.com/send?phone=${guestNumber}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a></div>` : ''}
+  </div>`;
+}
+
+async function loadTodayCheckins(){
+  const listEl = document.getElementById('admin-today-checkin-list');
+  listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
+  try{
+    const snap = await db.collection('genga_nilayam').get();
+    const today = todayKey();
+    const todays = [];
+    snap.forEach(doc=>{
+      const data = doc.data();
+      if(!doc.id.startsWith('request_') || data.status !== 'invoiced' || data.checkin !== today) return;
+      todays.push({ id: doc.id, ...data });
+    });
+    if(todays.length === 0){
+      listEl.innerHTML = '<div class="cal-hint">No check-ins today.</div>';
+      return;
+    }
+    todays.sort((a,b) => (a.checkinTime || '').localeCompare(b.checkinTime || ''));
+    listEl.innerHTML = todays.map(checkinCardHtml).join('');
+  }catch(e){
+    listEl.innerHTML = '<div class="cal-hint">Could not load today\'s check-in.</div>';
+  }
+}
+
 async function loadNextCheckins(){
   const listEl = document.getElementById('admin-next-checkin-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
@@ -945,7 +986,8 @@ async function loadNextCheckins(){
     const upcoming = [];
     snap.forEach(doc=>{
       const data = doc.data();
-      if(!doc.id.startsWith('request_') || data.status !== 'invoiced' || !data.checkin || data.checkin < today) return;
+      // Strictly after today - today's own check-ins have their own section above.
+      if(!doc.id.startsWith('request_') || data.status !== 'invoiced' || !data.checkin || data.checkin <= today) return;
       upcoming.push({ id: doc.id, ...data });
     });
     if(upcoming.length === 0){
@@ -959,16 +1001,7 @@ async function loadNextCheckins(){
       .filter(r => r.checkin === soonestDate)
       .sort((a,b) => (a.checkinTime || '').localeCompare(b.checkinTime || ''));
 
-    listEl.innerHTML = sameDay.map(r => {
-      const guestNumber = normalizePhone(r.phone || '');
-      return `
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
-        <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.guests || '?'} guests</div>
-        <div style="font-size:12px;color:var(--ink-soft);">${r.phone || ''}</div>
-        ${guestNumber ? `<div style="margin-top:8px;"><a href="https://api.whatsapp.com/send?phone=${guestNumber}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a></div>` : ''}
-      </div>`;
-    }).join('');
+    listEl.innerHTML = sameDay.map(checkinCardHtml).join('');
   }catch(e){
     listEl.innerHTML = '<div class="cal-hint">Could not load next check-in.</div>';
   }
@@ -1080,6 +1113,7 @@ document.getElementById('inv-back').addEventListener('click', async ()=>{
   document.getElementById('admin-invoice-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadPendingRequests();
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -1662,6 +1696,7 @@ document.getElementById('admin-report-btn').addEventListener('click', async ()=>
 document.getElementById('report-back').addEventListener('click', async ()=>{
   document.getElementById('admin-report-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -1815,6 +1850,7 @@ document.getElementById('revenue-range-show').addEventListener('click', ()=>{
 document.getElementById('revenue-back').addEventListener('click', async ()=>{
   document.getElementById('admin-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -1847,6 +1883,7 @@ document.getElementById('q-back').addEventListener('click', async ()=>{
   // Refresh so a pending card cleared out by Quick Invoice (see q-generate)
   // disappears immediately, instead of waiting for a property-dropdown change.
   await loadPendingRequests();
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
