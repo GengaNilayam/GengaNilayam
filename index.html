@@ -657,6 +657,17 @@
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+
+  // Anonymous visit counter for the admin dashboard - one write per page
+  // load, no personal data, and never blocks or slows down the page.
+  (function(){
+    const dayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, UTC is fine for a rough count
+    db.collection('genga_nilayam').doc('site_visits').set({
+      total: firebase.firestore.FieldValue.increment(1),
+      ['byDate.' + dayKey]: firebase.firestore.FieldValue.increment(1),
+      lastVisit: new Date().toISOString()
+    }, { merge: true }).catch(function(){ /* never let a tracking failure affect the guest */ });
+  })();
 </script>
 
 <script>
