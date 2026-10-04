@@ -324,7 +324,25 @@
       </div>
     </div>
     <div id="admin-report-view" style="display:none;">
-      <div class="cal-title" style="text-align:left;margin-bottom:14px;">All future check-ins</div>
+      <div class="cal-title" style="text-align:left;margin-bottom:4px;" id="admin-report-title">All future check-ins</div>
+      <button type="button" id="report-range-toggle" style="width:100%;padding:9px;margin:10px 0 12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
+      <div id="report-range-fields" style="display:none;margin-bottom:16px;">
+        <div class="field-row">
+          <div class="field"><label>From</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="report-range-from" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="report-range-from" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+          <div class="field"><label>To</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="report-range-to" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="report-range-to" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="report-range-show" style="width:100%;padding:10px;margin-top:10px;">Show check-ins for this range</button>
+      </div>
       <div id="admin-report-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
       <div class="cal-actions" style="margin-top:14px;">
         <div></div>
@@ -414,7 +432,35 @@
     </div>
     <div id="admin-rent-view" style="display:none;">
       <div class="cal-title" style="text-align:left;margin-bottom:4px;">Rent Tracker</div>
-      <div class="cal-hint" style="margin-bottom:14px;">The 5 Genga Nilayam rented units. Everything saves as you type - there's nothing to submit. EB bill cycle: 10th to 10th every two months, bill generated on the 10th-12th.</div>
+      <div class="cal-hint" style="margin-bottom:14px;">The 5 Genga Nilayam rented units, tracked month by month. Everything saves as you type - there's nothing to submit. EB bill cycle: 10th to 10th every two months, bill generated on the 10th-12th.</div>
+
+      <div class="field-row" style="margin-bottom:14px;">
+        <div class="field"><label>Month</label>
+          <select id="rent-month-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
+        </div>
+        <div class="field"><label>Year</label>
+          <select id="rent-year-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
+        </div>
+      </div>
+      <button type="button" id="rent-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
+      <div id="rent-range-fields" style="display:none;margin-bottom:16px;">
+        <div class="field-row">
+          <div class="field"><label>From</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="rent-range-from" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="rent-range-from" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+          <div class="field"><label>To</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="rent-range-to" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="rent-range-to" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="rent-range-show" style="width:100%;padding:10px;margin-top:10px;">Show totals for this range</button>
+        <div class="cal-hint" style="margin-top:8px;">This shows a read-only summary across the range - editing stays in the month view.</div>
+      </div>
 
       <div id="admin-rent-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
         <div class="cal-hint">Loading…</div>
@@ -436,6 +482,24 @@
         <div class="field"><label>Year</label>
           <select id="gnrev-year-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
         </div>
+      </div>
+      <button type="button" id="gnrev-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
+      <div id="gnrev-range-fields" style="display:none;margin-bottom:16px;">
+        <div class="field-row">
+          <div class="field"><label>From</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="gnrev-range-from" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="gnrev-range-from" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+          <div class="field"><label>To</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="gnrev-range-to" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="gnrev-range-to" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="gnrev-range-show" style="width:100%;padding:10px;margin-top:10px;">Show revenue for this range</button>
       </div>
       <div id="admin-gn-revenue-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
       <div class="cal-actions" style="margin-top:14px;">
@@ -462,6 +526,24 @@
           <select id="gnexp-year-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
         </div>
       </div>
+      <button type="button" id="gnexp-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
+      <div id="gnexp-range-fields" style="display:none;margin-bottom:16px;">
+        <div class="field-row">
+          <div class="field"><label>From</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="gnexp-range-from" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="gnexp-range-from" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+          <div class="field"><label>To</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="gnexp-range-to" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="gnexp-range-to" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="gnexp-range-show" style="width:100%;padding:10px;margin-top:10px;">Show expenses for this range</button>
+      </div>
       <div id="admin-gn-expenses-list" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
       <div class="cal-actions" style="margin-top:14px;">
         <div></div>
@@ -477,6 +559,24 @@
         <div class="field"><label>Year</label>
           <select id="gnpl-year-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
         </div>
+      </div>
+      <button type="button" id="gnpl-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
+      <div id="gnpl-range-fields" style="display:none;margin-bottom:16px;">
+        <div class="field-row">
+          <div class="field"><label>From</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="gnpl-range-from" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="gnpl-range-from" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+          <div class="field"><label>To</label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="gnpl-range-to" placeholder="DD/MM/YYYY" style="flex:1;">
+              <button type="button" class="qdp-open-btn" data-target="gnpl-range-to" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="gnpl-range-show" style="width:100%;padding:10px;margin-top:10px;">Show profit/loss for this range</button>
       </div>
       <div id="admin-gn-pl-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
       <div class="cal-actions" style="margin-top:14px;">
@@ -1682,7 +1782,24 @@ function regenerateInvoicePDF(r, e){
   }
 }
 
-async function generateReport(){
+let reportViewMode = 'upcoming';
+let reportViewFrom = null, reportViewTo = null;
+
+async function generateReport(opts){
+  if(opts && opts.mode === 'range'){
+    reportViewMode = 'range';
+    reportViewFrom = opts.from;
+    reportViewTo = opts.to;
+  } else if(opts && opts.mode === 'upcoming'){
+    reportViewMode = 'upcoming';
+  }
+  // a bare refresh call (no opts) keeps whatever mode/params were last active
+
+  const titleEl = document.getElementById('admin-report-title');
+  titleEl.textContent = reportViewMode === 'range'
+    ? `Check-ins ${fmtDate(reportViewFrom)} to ${fmtDate(reportViewTo)}`
+    : 'All future check-ins';
+
   const listEl = document.getElementById('admin-report-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
   try{
@@ -1691,14 +1808,19 @@ async function generateReport(){
     const all = [];
     snap.forEach(doc=>{
       const data = doc.data();
-      if(doc.id.startsWith('request_') && data.checkin && data.checkin >= today){
-        all.push({ id: doc.id, ...data });
+      if(!doc.id.startsWith('request_') || !data.checkin) return;
+      if(reportViewMode === 'range'){
+        if(!reportViewFrom || !reportViewTo) return;
+        if(data.checkin < reportViewFrom || data.checkin > reportViewTo) return;
+      } else {
+        if(data.checkin < today) return;
       }
+      all.push({ id: doc.id, ...data });
     });
     all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
     currentReportItems = all;
     if(all.length === 0){
-      listEl.innerHTML = '<div class="cal-hint">No upcoming check-ins.</div>';
+      listEl.innerHTML = reportViewMode === 'range' ? '<div class="cal-hint">No check-ins in this range.</div>' : '<div class="cal-hint">No upcoming check-ins.</div>';
       return;
     }
     listEl.innerHTML = all.map(r => `
@@ -1815,7 +1937,27 @@ async function generateReport(){
 document.getElementById('admin-report-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'none';
   document.getElementById('admin-report-view').style.display = 'block';
+  reportViewMode = 'upcoming';
+  reportViewFrom = null; reportViewTo = null;
+  document.getElementById('report-range-fields').style.display = 'none';
+  document.getElementById('report-range-toggle').textContent = 'Use a custom date range instead';
+  document.getElementById('report-range-from').value = '';
+  document.getElementById('report-range-to').value = '';
   await generateReport();
+});
+document.getElementById('report-range-toggle').addEventListener('click', ()=>{
+  const fields = document.getElementById('report-range-fields');
+  const showing = fields.style.display !== 'none';
+  fields.style.display = showing ? 'none' : 'block';
+  document.getElementById('report-range-toggle').textContent = showing ? 'Use a custom date range instead' : 'Show all future check-ins instead';
+  if(showing){ generateReport({ mode: 'upcoming' }); }
+});
+document.getElementById('report-range-show').addEventListener('click', ()=>{
+  const from = displayToIso(document.getElementById('report-range-from').value);
+  const to = displayToIso(document.getElementById('report-range-to').value);
+  if(!from || !to){ alert('Please enter both dates as DD/MM/YYYY.'); return; }
+  if(to < from){ alert('The "to" date needs to be after the "from" date.'); return; }
+  generateReport({ mode: 'range', from, to });
 });
 document.getElementById('report-back').addEventListener('click', async ()=>{
   document.getElementById('admin-report-view').style.display = 'none';
@@ -2001,6 +2143,7 @@ const GN_RENT_UNITS = [
 ];
 
 function monthKey(){ return todayKey().slice(0, 7); } // 'YYYY-MM'
+function monthKeyFor(year, month){ return year + '-' + String(month + 1).padStart(2, '0'); } // 'YYYY-MM'
 function monthLabel(mk){
   if(!mk) return '';
   const [y, m] = mk.split('-').map(Number);
@@ -2031,7 +2174,10 @@ function rentAgreementBadge(endDate){
   return '';
 }
 
-function rentCardHtml(unit, r){
+const RENT_MONTH_FIELDS = ['rentAmount', 'rentDueAmount', 'ebAmount', 'ebDueAmount'];
+let rentViewMonthKey = null;
+
+function rentCardHtml(unit, r, md){
   const guestNumber = normalizePhone(r.phone || '');
   return `
   <div class="rent-card" data-id="${unit.id}" style="border:1px solid var(--line);border-radius:12px;padding:14px;">
@@ -2044,12 +2190,12 @@ function rentCardHtml(unit, r){
       <div class="field"><label>WhatsApp number</label><input class="rent-f" data-field="phone" value="${r.phone || ''}" placeholder="98470 12233"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Rent amount (Rs.)</label><input class="rent-f" type="number" data-field="rentAmount" value="${r.rentAmount != null ? r.rentAmount : ''}"></div>
-      <div class="field"><label>Rent due amount (Rs.)</label><input class="rent-f" type="number" data-field="rentDueAmount" value="${r.rentDueAmount != null ? r.rentDueAmount : ''}"></div>
+      <div class="field"><label>Rent amount (Rs.)</label><input class="rent-f" type="number" data-field="rentAmount" value="${md.rentAmount != null ? md.rentAmount : ''}"></div>
+      <div class="field"><label>Rent due amount (Rs.)</label><input class="rent-f" type="number" data-field="rentDueAmount" value="${md.rentDueAmount != null ? md.rentDueAmount : ''}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>EB amount (Rs.)</label><input class="rent-f" type="number" data-field="ebAmount" value="${r.ebAmount != null ? r.ebAmount : ''}"></div>
-      <div class="field"><label>EB due amount (Rs.)</label><input class="rent-f" type="number" data-field="ebDueAmount" value="${r.ebDueAmount != null ? r.ebDueAmount : ''}"></div>
+      <div class="field"><label>EB amount (Rs.)</label><input class="rent-f" type="number" data-field="ebAmount" value="${md.ebAmount != null ? md.ebAmount : ''}"></div>
+      <div class="field"><label>EB due amount (Rs.)</label><input class="rent-f" type="number" data-field="ebDueAmount" value="${md.ebDueAmount != null ? md.ebDueAmount : ''}"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Agreement expiry date</label><input class="rent-f" type="date" data-field="agreementEnd" value="${r.agreementEnd || ''}"></div>
@@ -2057,16 +2203,20 @@ function rentCardHtml(unit, r){
         ${guestNumber ? `<a href="https://api.whatsapp.com/send?phone=${guestNumber}" target="_blank" rel="noopener" style="color:var(--wood);font-size:13px;font-weight:600;text-decoration:underline;">Message tenant</a>` : ''}
       </div>
     </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;">
+      ${Number(md.rentDueAmount) > 0 ? `<button type="button" class="rent-mark-rent-paid btn btn-primary" style="padding:8px 14px;font-size:12.5px;">Mark rent as paid</button>` : ''}
+      ${Number(md.ebDueAmount) > 0 ? `<button type="button" class="rent-mark-eb-paid btn btn-primary" style="padding:8px 14px;font-size:12.5px;">Mark EB bill as paid</button>` : ''}
+    </div>
   </div>`;
 }
 
 function renderRentSummary(unitsData){
   const el = document.getElementById('admin-rent-summary');
   let totalRent = 0, rentDue = 0, ebDue = 0;
-  unitsData.forEach(({ r }) => {
-    totalRent += Number(r.rentAmount) || 0;
-    rentDue += Number(r.rentDueAmount) || 0;
-    ebDue += Number(r.ebDueAmount) || 0;
+  unitsData.forEach(({ md }) => {
+    totalRent += Number(md.rentAmount) || 0;
+    rentDue += Number(md.rentDueAmount) || 0;
+    ebDue += Number(md.ebDueAmount) || 0;
   });
   el.innerHTML =
     rentStatTile('Total monthly rent', 'Rs.' + totalRent) +
@@ -2074,28 +2224,106 @@ function renderRentSummary(unitsData){
     rentStatTile('EB due', 'Rs.' + ebDue);
 }
 
-/** Reads the 5 fixed rent-tracker docs, creating any that don't exist yet with blank defaults. */
-async function fetchRentUnitsData(){
+/**
+ * Reads the 5 fixed rent-tracker docs for a given month ('YYYY-MM'). Tenant
+ * name/phone/agreement are unit-level (they rarely change); rent and EB
+ * amounts are stored per month under months.<mk>, so each month keeps its
+ * own figures instead of overwriting the last one.
+ * With autofill on (used by the editable Rent Tracker view, not reports),
+ * a month with no entry yet is pre-filled with the most recent earlier
+ * month's rent/EB amount (due amounts start at 0 for the new month) and
+ * that starting point is saved immediately, so the reminder script and
+ * reports always read a real, saved figure.
+ */
+async function fetchRentUnitsData(mk, opts){
+  opts = opts || {};
   const unitsData = [];
   for(const unit of GN_RENT_UNITS){
     const doc = await db.collection('genga_nilayam').doc(unit.id).get();
     let r = doc.exists ? doc.data() : null;
     if(!r){
-      r = { tenantName: '', phone: '', rentAmount: 0, rentDueAmount: 0, ebAmount: 0, ebDueAmount: 0, agreementEnd: '' };
+      r = { tenantName: '', phone: '', agreementEnd: '', months: {} };
       try{ await db.collection('genga_nilayam').doc(unit.id).set(r); }catch(e){}
     }
-    unitsData.push({ unit, r });
+    const months = r.months || {};
+    let md = months[mk];
+    if(!md){
+      if(opts.autofill){
+        const priorKeys = Object.keys(months).filter(k => k < mk).sort();
+        const prev = priorKeys.length ? months[priorKeys[priorKeys.length - 1]] : null;
+        md = {
+          rentAmount: prev ? (Number(prev.rentAmount) || 0) : 0,
+          rentDueAmount: 0,
+          ebAmount: prev ? (Number(prev.ebAmount) || 0) : 0,
+          ebDueAmount: 0
+        };
+        try{ await db.collection('genga_nilayam').doc(unit.id).set({ ['months.' + mk]: md }, { merge: true }); }catch(e){}
+      } else {
+        md = { rentAmount: 0, rentDueAmount: 0, ebAmount: 0, ebDueAmount: 0 };
+      }
+    }
+    unitsData.push({ unit, r, md });
   }
   return unitsData;
 }
 
-async function loadRentTenants(){
+let rentViewMode = 'month', rentViewFrom = null, rentViewTo = null;
+
+/** Read-only totals per unit across every month a date range touches. */
+async function computeRentRangeData(from, to){
+  const mks = monthKeysInRange(from, to);
+  const perUnit = GN_RENT_UNITS.map(unit => ({ unit, totalRent: 0, totalDue: 0, totalEb: 0, totalEbDue: 0 }));
+  for(const mk of mks){
+    const unitsData = await fetchRentUnitsData(mk, { autofill: false });
+    unitsData.forEach(({ md }, i) => {
+      perUnit[i].totalRent += Number(md.rentAmount) || 0;
+      perUnit[i].totalDue += Number(md.rentDueAmount) || 0;
+      perUnit[i].totalEb += Number(md.ebAmount) || 0;
+      perUnit[i].totalEbDue += Number(md.ebDueAmount) || 0;
+    });
+  }
+  return { perUnit, monthsCovered: mks.length };
+}
+
+function renderRentRangeSummary(data, from, to){
+  let totalRent = 0, totalDue = 0, totalEbDue = 0;
+  data.perUnit.forEach(u => { totalRent += u.totalRent; totalDue += u.totalDue; totalEbDue += u.totalEbDue; });
+  document.getElementById('admin-rent-summary').innerHTML =
+    rentStatTile('Total rent (range)', 'Rs.' + totalRent) +
+    rentStatTile('Rent due (range)', 'Rs.' + totalDue) +
+    rentStatTile('EB due (range)', 'Rs.' + totalEbDue);
+
+  const listEl = document.getElementById('admin-rent-list');
+  let html = `<div class="cal-hint" style="margin-bottom:4px;">${fmtDate(from)} to ${fmtDate(to)} &middot; ${data.monthsCovered} month${data.monthsCovered === 1 ? '' : 's'} &middot; read-only - switch back to the month view to edit</div>`;
+  html += data.perUnit.map(u => `
+    <div style="border:1px solid var(--line);border-radius:12px;padding:14px;">
+      <div style="font-weight:700;font-size:14.5px;margin-bottom:8px;">${u.unit.label}</div>
+      <div style="font-size:13px;color:var(--ink-soft);">Rent: Rs. ${u.totalRent.toLocaleString('en-IN')} &middot; Due: Rs. ${u.totalDue.toLocaleString('en-IN')}</div>
+      <div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">EB: Rs. ${u.totalEb.toLocaleString('en-IN')} &middot; EB due: Rs. ${u.totalEbDue.toLocaleString('en-IN')}</div>
+    </div>
+  `).join('');
+  listEl.innerHTML = html;
+}
+
+async function loadRentTenants(opts){
+  if(opts){
+    rentViewMode = opts.mode;
+    if(opts.mode === 'range'){ rentViewFrom = opts.from; rentViewTo = opts.to; }
+  }
   const listEl = document.getElementById('admin-rent-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
   try{
-    const unitsData = await fetchRentUnitsData();
+    if(rentViewMode === 'range'){
+      const data = await computeRentRangeData(rentViewFrom, rentViewTo);
+      renderRentRangeSummary(data, rentViewFrom, rentViewTo);
+      return;
+    }
+    const year = Number(document.getElementById('rent-year-select').value);
+    const month = Number(document.getElementById('rent-month-select').value);
+    rentViewMonthKey = monthKeyFor(year, month);
+    const unitsData = await fetchRentUnitsData(rentViewMonthKey, { autofill: true });
     renderRentSummary(unitsData);
-    listEl.innerHTML = unitsData.map(({ unit, r }) => rentCardHtml(unit, r)).join('');
+    listEl.innerHTML = unitsData.map(({ unit, r, md }) => rentCardHtml(unit, r, md)).join('');
     wireRentCards();
   }catch(e){
     listEl.innerHTML = '<div class="cal-hint">Could not load rent tracker.</div>';
@@ -2109,20 +2337,57 @@ function wireRentCards(){
       input.addEventListener('change', async () => {
         const field = input.getAttribute('data-field');
         let value = input.value;
-        if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebAmount' || field === 'ebDueAmount') value = Number(value) || 0;
-        try{ await db.collection('genga_nilayam').doc(id).set({ [field]: value }, { merge: true }); }catch(e){}
+        const isMonthField = RENT_MONTH_FIELDS.indexOf(field) !== -1;
+        if(isMonthField) value = Number(value) || 0;
+        const update = isMonthField
+          ? { ['months.' + rentViewMonthKey + '.' + field]: value }
+          : { [field]: value };
+        try{ await db.collection('genga_nilayam').doc(id).set(update, { merge: true }); }catch(e){}
         if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
           await loadRentTenants(); // refresh totals / expiry badge
         }
       });
     });
+    const markRentBtn = card.querySelector('.rent-mark-rent-paid');
+    if(markRentBtn){
+      markRentBtn.addEventListener('click', async () => {
+        try{ await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.rentDueAmount']: 0 }, { merge: true }); }catch(e){}
+        await loadRentTenants();
+      });
+    }
+    const markEbBtn = card.querySelector('.rent-mark-eb-paid');
+    if(markEbBtn){
+      markEbBtn.addEventListener('click', async () => {
+        try{ await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.ebDueAmount']: 0 }, { merge: true }); }catch(e){}
+        await loadRentTenants();
+      });
+    }
   });
 }
 
 document.getElementById('admin-rent-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'none';
   document.getElementById('admin-rent-view').style.display = 'block';
-  await loadRentTenants();
+  rentViewMode = 'month'; rentViewFrom = null; rentViewTo = null;
+  resetRangeUi('rent');
+  populateMonthYearSelects('rent-month-select', 'rent-year-select');
+  await loadRentTenants({ mode: 'month' });
+});
+document.getElementById('rent-month-select').addEventListener('change', ()=> loadRentTenants({ mode: 'month' }));
+document.getElementById('rent-year-select').addEventListener('change', ()=> loadRentTenants({ mode: 'month' }));
+document.getElementById('rent-range-toggle').addEventListener('click', ()=>{
+  const fields = document.getElementById('rent-range-fields');
+  const showing = fields.style.display !== 'none';
+  fields.style.display = showing ? 'none' : 'block';
+  document.getElementById('rent-range-toggle').textContent = showing ? 'Use a custom date range instead' : 'Use a month instead';
+  if(showing){ loadRentTenants({ mode: 'month' }); }
+});
+document.getElementById('rent-range-show').addEventListener('click', ()=>{
+  const from = displayToIso(document.getElementById('rent-range-from').value);
+  const to = displayToIso(document.getElementById('rent-range-to').value);
+  if(!from || !to){ alert('Please enter both dates as DD/MM/YYYY.'); return; }
+  if(to < from){ alert('The "to" date needs to be after the "from" date.'); return; }
+  loadRentTenants({ mode: 'range', from, to });
 });
 
 document.getElementById('rent-back').addEventListener('click', ()=>{
@@ -2133,38 +2398,63 @@ document.getElementById('rent-back').addEventListener('click', ()=>{
 /* ---------- GN Revenue / GN Expenses / GN Profit-Loss ----------
    These three reports sit above both businesses (homestay + long-term rent):
      - GN Revenue  = homestay revenue for the chosen month + rent collected
-                      (current Rent Tracker snapshot, not a month-by-month ledger)
+                      (the Rent Tracker's own figures for that same month)
      - GN Expenses = free-category expense entries ('expense_<id>' docs),
                       added here and filterable by month
      - GN P&L      = GN Revenue - GN Expenses for the chosen month          */
 
-async function computeHomestayRevenue(year, month){
+/** Homestay revenue for either a calendar month or a custom date range. */
+async function computeHomestayRevenue(opts){
   const snap = await db.collection('genga_nilayam').get();
   let total = 0;
   snap.forEach(doc=>{
     const data = doc.data();
     if(!doc.id.startsWith('request_') || data.status !== 'invoiced') return;
     if(!data.checkin) return;
-    const d = new Date(data.checkin + 'T00:00:00');
-    if(d.getFullYear() !== year || d.getMonth() !== month) return;
+    if(opts.mode === 'range'){
+      if(data.checkin < opts.from || data.checkin > opts.to) return;
+    } else {
+      const d = new Date(data.checkin + 'T00:00:00');
+      if(d.getFullYear() !== opts.year || d.getMonth() !== opts.month) return;
+    }
     total += Number(data.total) || 0;
   });
   return total;
 }
 
-async function computeRentSnapshot(){
-  const unitsData = await fetchRentUnitsData();
-  let totalRent = 0, rentDue = 0, ebDue = 0;
-  unitsData.forEach(({ r }) => {
-    totalRent += Number(r.rentAmount) || 0;
-    rentDue += Number(r.rentDueAmount) || 0;
-    ebDue += Number(r.ebDueAmount) || 0;
-  });
-  const rentCollected = Math.max(0, totalRent - rentDue);
-  return { totalRent, rentDue, ebDue, rentCollected };
+/** Every 'YYYY-MM' month key touched by a date range, inclusive. */
+function monthKeysInRange(from, to){
+  const [fy, fm] = from.split('-').map(Number);
+  const [ty, tm] = to.split('-').map(Number);
+  const keys = [];
+  let y = fy, m = fm - 1;
+  const endY = ty, endM = tm - 1;
+  while(y < endY || (y === endY && m <= endM)){
+    keys.push(y + '-' + String(m + 1).padStart(2, '0'));
+    m++; if(m > 11){ m = 0; y++; }
+  }
+  return keys;
 }
 
-async function computeExpensesTotal(year, month){
+/** Rent/EB totals actually recorded for a month or a range - no autofill,
+    so an unvisited month correctly reads as zero rather than a guess. A
+    range sums every calendar month it touches. */
+async function computeRentSnapshot(opts){
+  const mks = opts.mode === 'range' ? monthKeysInRange(opts.from, opts.to) : [monthKeyFor(opts.year, opts.month)];
+  let totalRent = 0, rentDue = 0, ebDue = 0;
+  for(const mk of mks){
+    const unitsData = await fetchRentUnitsData(mk, { autofill: false });
+    unitsData.forEach(({ md }) => {
+      totalRent += Number(md.rentAmount) || 0;
+      rentDue += Number(md.rentDueAmount) || 0;
+      ebDue += Number(md.ebDueAmount) || 0;
+    });
+  }
+  const rentCollected = Math.max(0, totalRent - rentDue);
+  return { totalRent, rentDue, ebDue, rentCollected, monthsCovered: mks.length };
+}
+
+async function computeExpensesTotal(opts){
   const snap = await db.collection('genga_nilayam').get();
   let total = 0;
   const byCategory = {};
@@ -2172,8 +2462,12 @@ async function computeExpensesTotal(year, month){
     if(!doc.id.startsWith('expense_')) return;
     const data = doc.data();
     if(!data.date) return;
-    const d = new Date(data.date + 'T00:00:00');
-    if(d.getFullYear() !== year || d.getMonth() !== month) return;
+    if(opts.mode === 'range'){
+      if(data.date < opts.from || data.date > opts.to) return;
+    } else {
+      const d = new Date(data.date + 'T00:00:00');
+      if(d.getFullYear() !== opts.year || d.getMonth() !== opts.month) return;
+    }
     const amt = Number(data.amount) || 0;
     total += amt;
     const cat = data.category || 'Uncategorised';
@@ -2195,31 +2489,70 @@ function populateMonthYearSelects(monthId, yearId){
   yearSel.value = thisYear;
 }
 
+/** Wires a view's "Use a custom date range instead" toggle + Show button.
+    onApply(opts) is called with {mode:'month',year,month} or {mode:'range',from,to}. */
+function wireRangeToggle(prefix, onApply){
+  const toggleBtn = document.getElementById(prefix + '-range-toggle');
+  const fields = document.getElementById(prefix + '-range-fields');
+  const monthSel = document.getElementById(prefix + '-month-select');
+  const yearSel = document.getElementById(prefix + '-year-select');
+  toggleBtn.addEventListener('click', ()=>{
+    const showing = fields.style.display !== 'none';
+    fields.style.display = showing ? 'none' : 'block';
+    toggleBtn.textContent = showing ? 'Use a custom date range instead' : 'Use a month instead';
+    if(showing){ onApply({ mode: 'month', year: Number(yearSel.value), month: Number(monthSel.value) }); }
+  });
+  document.getElementById(prefix + '-range-show').addEventListener('click', ()=>{
+    const from = displayToIso(document.getElementById(prefix + '-range-from').value);
+    const to = displayToIso(document.getElementById(prefix + '-range-to').value);
+    if(!from || !to){ alert('Please enter both dates as DD/MM/YYYY.'); return; }
+    if(to < from){ alert('The "to" date needs to be after the "from" date.'); return; }
+    onApply({ mode: 'range', from, to });
+  });
+  monthSel.addEventListener('change', ()=> onApply({ mode: 'month', year: Number(yearSel.value), month: Number(monthSel.value) }));
+  yearSel.addEventListener('change', ()=> onApply({ mode: 'month', year: Number(yearSel.value), month: Number(monthSel.value) }));
+}
+
+function resetRangeUi(prefix){
+  document.getElementById(prefix + '-range-fields').style.display = 'none';
+  document.getElementById(prefix + '-range-toggle').textContent = 'Use a custom date range instead';
+  document.getElementById(prefix + '-range-from').value = '';
+  document.getElementById(prefix + '-range-to').value = '';
+}
+
 /* ---- GN Revenue report ---- */
-async function generateGnRevenueReport(){
+let gnrevMode = 'month', gnrevYear = null, gnrevMonth = null, gnrevFrom = null, gnrevTo = null;
+
+async function generateGnRevenueReport(opts){
+  if(opts){
+    gnrevMode = opts.mode;
+    if(opts.mode === 'range'){ gnrevFrom = opts.from; gnrevTo = opts.to; }
+    else { gnrevYear = opts.year; gnrevMonth = opts.month; }
+  }
   const listEl = document.getElementById('admin-gn-revenue-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
-  const year = Number(document.getElementById('gnrev-year-select').value);
-  const month = Number(document.getElementById('gnrev-month-select').value);
   try{
-    const homestay = await computeHomestayRevenue(year, month);
-    const rent = await computeRentSnapshot();
+    const calcOpts = gnrevMode === 'range' ? { mode: 'range', from: gnrevFrom, to: gnrevTo } : { mode: 'month', year: gnrevYear, month: gnrevMonth };
+    const homestay = await computeHomestayRevenue(calcOpts);
+    const rent = await computeRentSnapshot(calcOpts);
     const total = homestay + rent.rentCollected;
-    const monthLabel = new Date(year, month, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+    const label = gnrevMode === 'range'
+      ? `${fmtDate(gnrevFrom)} to ${fmtDate(gnrevTo)}`
+      : new Date(gnrevYear, gnrevMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
     listEl.innerHTML = `
-      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">${label}</div>
       <div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:12px;">Rs. ${total.toLocaleString('en-IN')}</div>
       <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;">
         <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Homestay revenue</div>
         <div style="font-size:18px;font-weight:700;color:var(--deep-2);">Rs. ${homestay.toLocaleString('en-IN')}</div>
-        <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Invoiced bookings checking in during ${monthLabel}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Invoiced bookings checking in during ${label}</div>
       </div>
       <div style="border:1px solid var(--line);border-radius:10px;padding:12px;">
         <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Rent collected</div>
         <div style="font-size:18px;font-weight:700;color:var(--deep-2);">Rs. ${rent.rentCollected.toLocaleString('en-IN')}</div>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Of Rs. ${rent.totalRent.toLocaleString('en-IN')} total monthly rent across the 5 units &middot; Rs. ${rent.rentDue.toLocaleString('en-IN')} still due</div>
+        ${gnrevMode === 'range' ? `<div class="cal-hint" style="margin-top:6px;">Rent/EB figures are summed across every month this range touches (${rent.monthsCovered} month${rent.monthsCovered === 1 ? '' : 's'}).</div>` : ''}
       </div>
-      <div class="cal-hint" style="margin-top:10px;">Rent figures reflect the Rent Tracker's current status, not a month-by-month history.</div>
     `;
   }catch(e){
     listEl.innerHTML = '<div class="cal-hint">Could not load GN revenue report.</div>';
@@ -2228,11 +2561,12 @@ async function generateGnRevenueReport(){
 document.getElementById('admin-gn-revenue-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'none';
   document.getElementById('admin-gn-revenue-view').style.display = 'block';
+  gnrevMode = 'month'; gnrevYear = null; gnrevMonth = null; gnrevFrom = null; gnrevTo = null;
+  resetRangeUi('gnrev');
   populateMonthYearSelects('gnrev-month-select', 'gnrev-year-select');
-  await generateGnRevenueReport();
+  await generateGnRevenueReport({ mode: 'month', year: new Date().getFullYear(), month: new Date().getMonth() });
 });
-document.getElementById('gnrev-month-select').addEventListener('change', generateGnRevenueReport);
-document.getElementById('gnrev-year-select').addEventListener('change', generateGnRevenueReport);
+wireRangeToggle('gnrev', generateGnRevenueReport);
 document.getElementById('gn-revenue-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
@@ -2240,6 +2574,8 @@ document.getElementById('gn-revenue-back').addEventListener('click', async ()=>{
 });
 
 /* ---- GN Expenses ---- */
+let gnexpMode = 'month', gnexpYear = null, gnexpMonth = null, gnexpFrom = null, gnexpTo = null;
+
 async function addExpense(){
   const category = document.getElementById('exp-category').value.trim();
   const amount = Number(document.getElementById('exp-amount').value) || 0;
@@ -2255,35 +2591,48 @@ async function addExpense(){
   document.getElementById('exp-category').value = '';
   document.getElementById('exp-amount').value = '';
   document.getElementById('exp-note').value = '';
-  document.getElementById('gnexp-month-select').value = new Date(date + 'T00:00:00').getMonth();
-  document.getElementById('gnexp-year-select').value = new Date(date + 'T00:00:00').getFullYear();
-  await generateGnExpensesReport();
+  // Jump the view back to the expense's own month so it's visible right away.
+  const d = new Date(date + 'T00:00:00');
+  resetRangeUi('gnexp');
+  document.getElementById('gnexp-month-select').value = d.getMonth();
+  document.getElementById('gnexp-year-select').value = d.getFullYear();
+  await generateGnExpensesReport({ mode: 'month', year: d.getFullYear(), month: d.getMonth() });
 }
 document.getElementById('exp-add-btn').addEventListener('click', addExpense);
 
-async function generateGnExpensesReport(){
+async function generateGnExpensesReport(opts){
+  if(opts){
+    gnexpMode = opts.mode;
+    if(opts.mode === 'range'){ gnexpFrom = opts.from; gnexpTo = opts.to; }
+    else { gnexpYear = opts.year; gnexpMonth = opts.month; }
+  }
   const listEl = document.getElementById('admin-gn-expenses-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
-  const year = Number(document.getElementById('gnexp-year-select').value);
-  const month = Number(document.getElementById('gnexp-month-select').value);
   try{
+    const calcOpts = gnexpMode === 'range' ? { mode: 'range', from: gnexpFrom, to: gnexpTo } : { mode: 'month', year: gnexpYear, month: gnexpMonth };
     const snap = await db.collection('genga_nilayam').get();
     const items = [];
     snap.forEach(doc=>{
       if(!doc.id.startsWith('expense_')) return;
       const data = doc.data();
       if(!data.date) return;
-      const d = new Date(data.date + 'T00:00:00');
-      if(d.getFullYear() !== year || d.getMonth() !== month) return;
+      if(calcOpts.mode === 'range'){
+        if(data.date < calcOpts.from || data.date > calcOpts.to) return;
+      } else {
+        const d = new Date(data.date + 'T00:00:00');
+        if(d.getFullYear() !== calcOpts.year || d.getMonth() !== calcOpts.month) return;
+      }
       items.push({ id: doc.id, ...data });
     });
     items.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
     const total = items.reduce((s,x)=> s + (Number(x.amount)||0), 0);
     const byCategory = {};
     items.forEach(x => { const c = x.category || 'Uncategorised'; byCategory[c] = (byCategory[c]||0) + (Number(x.amount)||0); });
-    const monthLabel = new Date(year, month, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+    const label = gnexpMode === 'range'
+      ? `${fmtDate(gnexpFrom)} to ${fmtDate(gnexpTo)}`
+      : new Date(gnexpYear, gnexpMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
 
-    let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>`;
+    let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${label}</div>`;
     html += `<div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:10px;">Rs. ${total.toLocaleString('en-IN')}</div>`;
     const cats = Object.keys(byCategory);
     if(cats.length){
@@ -2292,7 +2641,7 @@ async function generateGnExpensesReport(){
         `</div>`;
     }
     if(items.length === 0){
-      html += '<div class="cal-hint">No expenses recorded for this month.</div>';
+      html += '<div class="cal-hint">No expenses recorded for this period.</div>';
     } else {
       html += items.map(x => `
         <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
@@ -2321,11 +2670,12 @@ document.getElementById('admin-gn-expenses-btn').addEventListener('click', async
   document.getElementById('exp-amount').value = '';
   document.getElementById('exp-note').value = '';
   document.getElementById('exp-date').value = todayKey();
+  gnexpMode = 'month'; gnexpYear = null; gnexpMonth = null; gnexpFrom = null; gnexpTo = null;
+  resetRangeUi('gnexp');
   populateMonthYearSelects('gnexp-month-select', 'gnexp-year-select');
-  await generateGnExpensesReport();
+  await generateGnExpensesReport({ mode: 'month', year: new Date().getFullYear(), month: new Date().getMonth() });
 });
-document.getElementById('gnexp-month-select').addEventListener('change', generateGnExpensesReport);
-document.getElementById('gnexp-year-select').addEventListener('change', generateGnExpensesReport);
+wireRangeToggle('gnexp', generateGnExpensesReport);
 document.getElementById('gn-expenses-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-expenses-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
@@ -2333,21 +2683,29 @@ document.getElementById('gn-expenses-back').addEventListener('click', async ()=>
 });
 
 /* ---- GN Profit / Loss report ---- */
-async function generateGnPlReport(){
+let gnplMode = 'month', gnplYear = null, gnplMonth = null, gnplFrom = null, gnplTo = null;
+
+async function generateGnPlReport(opts){
+  if(opts){
+    gnplMode = opts.mode;
+    if(opts.mode === 'range'){ gnplFrom = opts.from; gnplTo = opts.to; }
+    else { gnplYear = opts.year; gnplMonth = opts.month; }
+  }
   const listEl = document.getElementById('admin-gn-pl-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
-  const year = Number(document.getElementById('gnpl-year-select').value);
-  const month = Number(document.getElementById('gnpl-month-select').value);
   try{
-    const homestay = await computeHomestayRevenue(year, month);
-    const rent = await computeRentSnapshot();
+    const calcOpts = gnplMode === 'range' ? { mode: 'range', from: gnplFrom, to: gnplTo } : { mode: 'month', year: gnplYear, month: gnplMonth };
+    const homestay = await computeHomestayRevenue(calcOpts);
+    const rent = await computeRentSnapshot(calcOpts);
     const totalRevenue = homestay + rent.rentCollected;
-    const exp = await computeExpensesTotal(year, month);
+    const exp = await computeExpensesTotal(calcOpts);
     const pl = totalRevenue - exp.total;
-    const monthLabel = new Date(year, month, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+    const label = gnplMode === 'range'
+      ? `${fmtDate(gnplFrom)} to ${fmtDate(gnplTo)}`
+      : new Date(gnplYear, gnplMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
     const plColor = pl >= 0 ? 'var(--deep)' : '#b3261e';
     listEl.innerHTML = `
-      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">${label}</div>
       <div style="font-size:28px;font-weight:700;color:${plColor};margin-bottom:12px;">Rs. ${pl.toLocaleString('en-IN')} ${pl >= 0 ? '(profit)' : '(loss)'}</div>
       <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;">
         <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Total revenue</div>
@@ -2358,7 +2716,7 @@ async function generateGnPlReport(){
         <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Total expenses</div>
         <div style="font-size:18px;font-weight:700;color:var(--deep-2);">Rs. ${exp.total.toLocaleString('en-IN')}</div>
       </div>
-      <div class="cal-hint" style="margin-top:10px;">Rent figures reflect the Rent Tracker's current status, not a month-by-month history.</div>
+      ${gnplMode === 'range' ? `<div class="cal-hint" style="margin-top:10px;">Rent/EB figures are summed across every month this range touches (${rent.monthsCovered} month${rent.monthsCovered === 1 ? '' : 's'}).</div>` : ''}
     `;
   }catch(e){
     listEl.innerHTML = '<div class="cal-hint">Could not load profit/loss report.</div>';
@@ -2367,11 +2725,12 @@ async function generateGnPlReport(){
 document.getElementById('admin-gn-pl-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'none';
   document.getElementById('admin-gn-pl-view').style.display = 'block';
+  gnplMode = 'month'; gnplYear = null; gnplMonth = null; gnplFrom = null; gnplTo = null;
+  resetRangeUi('gnpl');
   populateMonthYearSelects('gnpl-month-select', 'gnpl-year-select');
-  await generateGnPlReport();
+  await generateGnPlReport({ mode: 'month', year: new Date().getFullYear(), month: new Date().getMonth() });
 });
-document.getElementById('gnpl-month-select').addEventListener('change', generateGnPlReport);
-document.getElementById('gnpl-year-select').addEventListener('change', generateGnPlReport);
+wireRangeToggle('gnpl', generateGnPlReport);
 document.getElementById('gn-pl-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-pl-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
