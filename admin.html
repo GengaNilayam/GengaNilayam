@@ -466,6 +466,8 @@
         <div class="cal-hint">Loading…</div>
       </div>
 
+      <div id="rent-error-banner" style="display:none;background:#fde2e1;color:#b3261e;border:1px solid #f3b4b0;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
+
       <div id="admin-rent-unit-buttons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
 
       <div id="admin-rent-list" style="display:flex;flex-direction:column;gap:14px;"></div>
@@ -2190,6 +2192,23 @@ function rentAgreementBadge(endDate){
   return '';
 }
 
+/** Shows a save/load error as text directly in the page, not just via
+    alert() - some mobile browsers and in-app file previews (WhatsApp,
+    Gmail attachment viewer, etc.) silently block alert()/confirm() popups,
+    which otherwise makes a failed save look like "nothing happened". */
+function rentShowError(message){
+  const el = document.getElementById('rent-error-banner');
+  if(!el) return;
+  el.textContent = message;
+  el.style.display = 'block';
+}
+function rentClearError(){
+  const el = document.getElementById('rent-error-banner');
+  if(!el) return;
+  el.style.display = 'none';
+  el.textContent = '';
+}
+
 /** Rent/EB paid-vs-due status badge - this is what makes the Rent Tracker
     read as a report, not just an edit form. */
 function rentPaidBadge(md){
@@ -2483,6 +2502,7 @@ function wireRentCards(){
         const original = btn.textContent;
         btn.disabled = true;
         btn.textContent = 'Saving…';
+        rentClearError();
         try{
           await db.collection('genga_nilayam').doc(id).set(update, { merge: true });
           if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
@@ -2493,7 +2513,7 @@ function wireRentCards(){
           }
         }catch(e){
           console.error('Rent Tracker: could not save ' + field, e);
-          alert('Could not save ' + field + ': ' + (e && e.message ? e.message : e));
+          rentShowError('Could not save ' + field + ': ' + (e && e.message ? e.message : e));
           btn.textContent = original;
           btn.disabled = false;
         }
@@ -2503,12 +2523,13 @@ function wireRentCards(){
     if(markRentBtn){
       markRentBtn.addEventListener('click', async () => {
         markRentBtn.disabled = true;
+        rentClearError();
         try{
           await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.rentDueAmount']: 0 }, { merge: true });
           await loadRentTenants();
         }catch(e){
           console.error('Rent Tracker: could not mark rent as paid', e);
-          alert('Could not mark rent as paid: ' + (e && e.message ? e.message : e));
+          rentShowError('Could not mark rent as paid: ' + (e && e.message ? e.message : e));
           markRentBtn.disabled = false;
         }
       });
@@ -2517,12 +2538,13 @@ function wireRentCards(){
     if(markEbBtn){
       markEbBtn.addEventListener('click', async () => {
         markEbBtn.disabled = true;
+        rentClearError();
         try{
           await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.ebDueAmount']: 0 }, { merge: true });
           await loadRentTenants();
         }catch(e){
           console.error('Rent Tracker: could not mark EB bill as paid', e);
-          alert('Could not mark EB bill as paid: ' + (e && e.message ? e.message : e));
+          rentShowError('Could not mark EB bill as paid: ' + (e && e.message ? e.message : e));
           markEbBtn.disabled = false;
         }
       });
@@ -2535,6 +2557,7 @@ document.getElementById('admin-rent-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-rent-view').style.display = 'block';
   rentViewMode = 'month'; rentViewFrom = null; rentViewTo = null;
   rentSelectedUnitId = null;
+  rentClearError();
   resetRangeUi('rent');
   populateMonthYearSelects('rent-month-select', 'rent-year-select');
   await loadRentTenants({ mode: 'month' });
