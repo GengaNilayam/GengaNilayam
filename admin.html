@@ -286,6 +286,16 @@
       <button type="button" class="btn btn-primary" id="admin-rent-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Rent Tracker</button>
       <button type="button" class="btn btn-primary" id="admin-docs-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Genga Nilayam Documents</button>
       <button type="button" class="btn btn-primary" id="admin-muh-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Muhurtham Dates</button>
+      <button type="button" class="btn btn-primary" id="admin-meter-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">EB Meter Numbers</button>
+      <div id="admin-meter-panel" style="display:none;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;">
+        <dl style="margin:0;display:grid;grid-template-columns:1fr auto;gap:8px 12px;font-size:13.5px;">
+          <dt>All commercial spaces</dt><dd style="margin:0;font-weight:600;text-align:right;">072220021934</dd>
+          <dt>Home#1</dt><dd style="margin:0;font-weight:600;text-align:right;">072220021051</dd>
+          <dt>Home#2</dt><dd style="margin:0;font-weight:600;text-align:right;">072220021911</dd>
+          <dt>1st floor Home</dt><dd style="margin:0;font-weight:600;text-align:right;">072220021653</dd>
+          <dt>Chennai Home</dt><dd style="margin:0;font-weight:600;text-align:right;">09296009992</dd>
+        </dl>
+      </div>
       <button type="button" class="btn btn-primary" id="admin-gn-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-gn-expenses-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Expenses</button>
       <button type="button" class="btn btn-primary" id="admin-gn-pl-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Generate GN profit/loss report</button>
@@ -3009,6 +3019,11 @@ document.getElementById('muh-back').addEventListener('click', () => {
   document.getElementById('admin-muh-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   renderAdminCalendar();
+});
+
+document.getElementById('admin-meter-btn').addEventListener('click', () => {
+  const panel = document.getElementById('admin-meter-panel');
+  panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
 });
 
 /* ---------- GN Revenue / GN Expenses / GN Profit-Loss ----------
