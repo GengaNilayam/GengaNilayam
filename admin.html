@@ -432,7 +432,7 @@
     </div>
     <div id="admin-rent-view" style="display:none;">
       <div class="cal-title" style="text-align:left;margin-bottom:4px;">Rent Tracker</div>
-      <div class="cal-hint" style="margin-bottom:14px;">The 5 Genga Nilayam rented units, tracked month by month. Everything saves as you type - there's nothing to submit. EB bill cycle: 10th to 10th every two months, bill generated on the 10th-12th.</div>
+      <div class="cal-hint" style="margin-bottom:14px;">The 5 Genga Nilayam rented units, tracked month by month, with a paid/due badge on every unit and every month. Everything saves as you type - there's nothing to submit. EB bill cycle: 10th to 10th every two months, bill generated on the 10th-12th.</div>
 
       <div class="field-row" style="margin-bottom:14px;">
         <div class="field"><label>Month</label>
@@ -2135,12 +2135,26 @@ document.getElementById('admin-ebsplit-btn').addEventListener('click', ()=>{
    admin wants to be able to edit these whenever details change. */
 
 const GN_RENT_UNITS = [
-  { id: 'rent_gf_commercial', label: 'Ground floor — Commercial space' },
-  { id: 'rent_1f_commercial', label: '1st floor — Commercial space' },
-  { id: 'rent_2f_commercial', label: '2nd floor — Commercial space' },
-  { id: 'rent_3f_commercial', label: '3rd floor — Commercial space' },
-  { id: 'rent_1f_residential', label: '1st floor — Residential home' }
+  { id: 'rent_gf_commercial', label: 'Ground floor' },
+  { id: 'rent_1f_commercial', label: '1st floor' },
+  { id: 'rent_2f_commercial', label: '2nd floor — Commercial' },
+  { id: 'rent_3f_commercial', label: '3rd floor — Commercial' },
+  { id: 'rent_1f_residential', label: '2nd floor — Home' }
 ];
+
+/* Default tenant details for each unit. These only ever BACKFILL a field
+   that is genuinely empty (on first load, or if a field was cleared) - they
+   never overwrite anything the admin has already typed in, so edits made
+   later always stick. Agreement end dates were given as "Mar/Apr 2027", so
+   30 Mar 2027 is used as a concrete date - adjust per unit as needed in
+   the Agreement expiry date field. */
+const RENT_DEFAULTS = {
+  rent_gf_commercial: { tenantName: 'Mohanaram (Aathira Associates)', phone: '8754330709', rentAmount: 5000, agreementEnd: '2027-03-30', advancePaid: 25000 },
+  rent_1f_commercial: { tenantName: 'Venkateswaran (GK Lawyers)', phone: '9952760243', rentAmount: 4000, agreementEnd: '2027-03-30', advancePaid: 20000 },
+  rent_2f_commercial: { tenantName: 'Mariselvi (Sai Nursing Service)', phone: '6381477589', rentAmount: 2000, agreementEnd: '2027-03-30', advancePaid: 10000 },
+  rent_3f_commercial: { tenantName: 'Malini (Malini Yoga Studio)', phone: '9003778414', rentAmount: 3000, agreementEnd: '2027-03-30', advancePaid: 15000 },
+  rent_1f_residential: { tenantName: 'Irudhayaraj J', phone: '9367724315', rentAmount: 9900, agreementEnd: '2027-03-30', advancePaid: 40000 }
+};
 
 function monthKey(){ return todayKey().slice(0, 7); } // 'YYYY-MM'
 function monthKeyFor(year, month){ return year + '-' + String(month + 1).padStart(2, '0'); } // 'YYYY-MM'
@@ -2174,16 +2188,34 @@ function rentAgreementBadge(endDate){
   return '';
 }
 
+/** Rent/EB paid-vs-due status badge - this is what makes the Rent Tracker
+    read as a report, not just an edit form. */
+function rentPaidBadge(md){
+  const rentPaid = Number(md.rentDueAmount) <= 0;
+  const ebPaid = Number(md.ebDueAmount) <= 0;
+  if(rentPaid && ebPaid){
+    return '<span style="background:#e3f2e1;color:#1e7a34;font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;">Rent &amp; EB paid</span>';
+  }
+  const parts = [];
+  if(!rentPaid) parts.push('Rent due');
+  if(!ebPaid) parts.push('EB due');
+  return `<span style="background:#fde2e1;color:#b3261e;font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;">${parts.join(' &middot; ')}</span>`;
+}
+
 const RENT_MONTH_FIELDS = ['rentAmount', 'rentDueAmount', 'ebAmount', 'ebDueAmount'];
+const RENT_NUMERIC_FIELDS = ['rentAmount', 'rentDueAmount', 'ebAmount', 'ebDueAmount', 'advancePaid'];
 let rentViewMonthKey = null;
 
 function rentCardHtml(unit, r, md){
   const guestNumber = normalizePhone(r.phone || '');
   return `
   <div class="rent-card" data-id="${unit.id}" style="border:1px solid var(--line);border-radius:12px;padding:14px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
       <div style="font-weight:700;font-size:14.5px;">${unit.label}</div>
-      ${rentAgreementBadge(r.agreementEnd)}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${rentPaidBadge(md)}
+        ${rentAgreementBadge(r.agreementEnd)}
+      </div>
     </div>
     <div class="field-row">
       <div class="field"><label>Tenant name</label><input class="rent-f" data-field="tenantName" value="${r.tenantName || ''}"></div>
@@ -2199,6 +2231,9 @@ function rentCardHtml(unit, r, md){
     </div>
     <div class="field-row">
       <div class="field"><label>Agreement expiry date</label><input class="rent-f" type="date" data-field="agreementEnd" value="${r.agreementEnd || ''}"></div>
+      <div class="field"><label>Advance paid (Rs.)</label><input class="rent-f" type="number" data-field="advancePaid" value="${r.advancePaid != null ? r.advancePaid : ''}"></div>
+    </div>
+    <div class="field-row">
       <div class="field" style="display:flex;align-items:center;">
         ${guestNumber ? `<a href="https://api.whatsapp.com/send?phone=${guestNumber}" target="_blank" rel="noopener" style="color:var(--wood);font-size:13px;font-weight:600;text-decoration:underline;">Message tenant</a>` : ''}
       </div>
@@ -2241,9 +2276,29 @@ async function fetchRentUnitsData(mk, opts){
   for(const unit of GN_RENT_UNITS){
     const doc = await db.collection('genga_nilayam').doc(unit.id).get();
     let r = doc.exists ? doc.data() : null;
+    const def = RENT_DEFAULTS[unit.id] || {};
     if(!r){
-      r = { tenantName: '', phone: '', agreementEnd: '', months: {} };
+      r = {
+        tenantName: def.tenantName || '',
+        phone: def.phone || '',
+        agreementEnd: def.agreementEnd || '',
+        advancePaid: def.advancePaid != null ? def.advancePaid : 0,
+        months: {}
+      };
       try{ await db.collection('genga_nilayam').doc(unit.id).set(r); }catch(e){}
+    } else {
+      // Backfill only genuinely-empty sticky fields from the defaults -
+      // anything the admin has already filled in (or cleared on purpose
+      // for phone/name) is left exactly as is.
+      const fill = {};
+      if(!r.tenantName && def.tenantName) fill.tenantName = def.tenantName;
+      if(!r.phone && def.phone) fill.phone = def.phone;
+      if(!r.agreementEnd && def.agreementEnd) fill.agreementEnd = def.agreementEnd;
+      if((r.advancePaid == null || r.advancePaid === '') && def.advancePaid != null) fill.advancePaid = def.advancePaid;
+      if(Object.keys(fill).length){
+        Object.assign(r, fill);
+        try{ await db.collection('genga_nilayam').doc(unit.id).set(fill, { merge: true }); }catch(e){}
+      }
     }
     const months = r.months || {};
     let md = months[mk];
@@ -2252,7 +2307,7 @@ async function fetchRentUnitsData(mk, opts){
         const priorKeys = Object.keys(months).filter(k => k < mk).sort();
         const prev = priorKeys.length ? months[priorKeys[priorKeys.length - 1]] : null;
         md = {
-          rentAmount: prev ? (Number(prev.rentAmount) || 0) : 0,
+          rentAmount: prev ? (Number(prev.rentAmount) || 0) : (def.rentAmount != null ? def.rentAmount : 0),
           rentDueAmount: 0,
           ebAmount: prev ? (Number(prev.ebAmount) || 0) : 0,
           ebDueAmount: 0
@@ -2269,17 +2324,27 @@ async function fetchRentUnitsData(mk, opts){
 
 let rentViewMode = 'month', rentViewFrom = null, rentViewTo = null;
 
-/** Read-only totals per unit across every month a date range touches. */
+/** Read-only, per-unit-per-month paid/unpaid breakdown across a date range -
+    this is the "report" view: every month the range touches shows whether
+    rent and EB were paid, not just the totals. */
 async function computeRentRangeData(from, to){
   const mks = monthKeysInRange(from, to);
-  const perUnit = GN_RENT_UNITS.map(unit => ({ unit, totalRent: 0, totalDue: 0, totalEb: 0, totalEbDue: 0 }));
+  const perUnit = GN_RENT_UNITS.map(unit => ({ unit, months: [], totalRent: 0, totalDue: 0, totalEb: 0, totalEbDue: 0 }));
   for(const mk of mks){
     const unitsData = await fetchRentUnitsData(mk, { autofill: false });
     unitsData.forEach(({ md }, i) => {
-      perUnit[i].totalRent += Number(md.rentAmount) || 0;
-      perUnit[i].totalDue += Number(md.rentDueAmount) || 0;
-      perUnit[i].totalEb += Number(md.ebAmount) || 0;
-      perUnit[i].totalEbDue += Number(md.ebDueAmount) || 0;
+      const rentAmount = Number(md.rentAmount) || 0;
+      const rentDueAmount = Number(md.rentDueAmount) || 0;
+      const ebAmount = Number(md.ebAmount) || 0;
+      const ebDueAmount = Number(md.ebDueAmount) || 0;
+      perUnit[i].months.push({
+        mk, rentAmount, rentDueAmount, ebAmount, ebDueAmount,
+        rentPaid: rentDueAmount <= 0, ebPaid: ebDueAmount <= 0
+      });
+      perUnit[i].totalRent += rentAmount;
+      perUnit[i].totalDue += rentDueAmount;
+      perUnit[i].totalEb += ebAmount;
+      perUnit[i].totalEbDue += ebDueAmount;
     });
   }
   return { perUnit, monthsCovered: mks.length };
@@ -2298,8 +2363,18 @@ function renderRentRangeSummary(data, from, to){
   html += data.perUnit.map(u => `
     <div style="border:1px solid var(--line);border-radius:12px;padding:14px;">
       <div style="font-weight:700;font-size:14.5px;margin-bottom:8px;">${u.unit.label}</div>
-      <div style="font-size:13px;color:var(--ink-soft);">Rent: Rs. ${u.totalRent.toLocaleString('en-IN')} &middot; Due: Rs. ${u.totalDue.toLocaleString('en-IN')}</div>
-      <div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">EB: Rs. ${u.totalEb.toLocaleString('en-IN')} &middot; EB due: Rs. ${u.totalEbDue.toLocaleString('en-IN')}</div>
+      <div style="font-size:13px;color:var(--ink-soft);margin-bottom:10px;">Total rent: Rs. ${u.totalRent.toLocaleString('en-IN')} &middot; Total due: Rs. ${u.totalDue.toLocaleString('en-IN')} &middot; EB: Rs. ${u.totalEb.toLocaleString('en-IN')} &middot; EB due: Rs. ${u.totalEbDue.toLocaleString('en-IN')}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${u.months.map(m => `
+          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:6px;flex-wrap:wrap;gap:4px;">
+            <span style="font-size:12.5px;font-weight:600;">${monthLabel(m.mk)}</span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap;">
+              <span style="background:${m.rentPaid ? '#e3f2e1' : '#fde2e1'};color:${m.rentPaid ? '#1e7a34' : '#b3261e'};font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;">${m.rentPaid ? 'Rent paid' : 'Rent due Rs.' + m.rentDueAmount.toLocaleString('en-IN')}</span>
+              <span style="background:${m.ebPaid ? '#e3f2e1' : '#fde2e1'};color:${m.ebPaid ? '#1e7a34' : '#b3261e'};font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;">${m.ebPaid ? 'EB paid' : 'EB due Rs.' + m.ebDueAmount.toLocaleString('en-IN')}</span>
+            </span>
+          </div>
+        `).join('')}
+      </div>
     </div>
   `).join('');
   listEl.innerHTML = html;
@@ -2338,13 +2413,14 @@ function wireRentCards(){
         const field = input.getAttribute('data-field');
         let value = input.value;
         const isMonthField = RENT_MONTH_FIELDS.indexOf(field) !== -1;
-        if(isMonthField) value = Number(value) || 0;
+        const isNumericField = RENT_NUMERIC_FIELDS.indexOf(field) !== -1;
+        if(isNumericField) value = Number(value) || 0;
         const update = isMonthField
           ? { ['months.' + rentViewMonthKey + '.' + field]: value }
           : { [field]: value };
         try{ await db.collection('genga_nilayam').doc(id).set(update, { merge: true }); }catch(e){}
         if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
-          await loadRentTenants(); // refresh totals / expiry badge
+          await loadRentTenants(); // refresh totals / expiry / paid badges
         }
       });
     });
