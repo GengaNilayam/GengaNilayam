@@ -879,9 +879,11 @@ function closeGuestCalendar(){
 }
 
 // Best-effort Tamil muhurtham dates for the rest of 2026, cross-referenced
-// across multiple calendar sources. Worth double-checking against a local
-// panchangam before relying on it - this is the one place to correct it.
-const MUHURTHAM_DATES = {
+// across multiple calendar sources. This is only the fallback SEED used if
+// Firestore can't be reached - the real, editable list lives in Firestore
+// (doc 'muhurtham_dates') and is managed from the admin panel's
+// "Muhurtham Dates" button, so this constant no longer needs upkeep.
+const SEED_MUHURTHAM_DATES = {
   '2026-09-17': 'valarpirai',
   '2026-10-25': 'valarpirai',
   '2026-10-30': 'theipirai',
@@ -974,6 +976,17 @@ const MUHURTHAM_DATES = {
   '2027-12-09': 'valarpirai',
   '2027-12-10': 'valarpirai',
 };
+
+// The real, editable muhurtham list - starts as a copy of the seed above
+// (so pricing still works even if this read hasn't finished yet) and is
+// replaced with whatever's in Firestore as soon as the fetch below resolves,
+// which is normally well before a guest gets to picking dates or booking.
+let MUHURTHAM_DATES = Object.assign({}, SEED_MUHURTHAM_DATES);
+(function(){
+  db.collection('genga_nilayam').doc('muhurtham_dates').get().then(function(doc){
+    if(doc.exists && doc.data().dates) MUHURTHAM_DATES = doc.data().dates;
+  }).catch(function(){ /* keep the seed fallback */ });
+})();
 
 // Bookings peak the evening before a muhurtham date. Valarpirai always
 // counts; Theipirai only counts if the muhurtham date itself is a weekend.

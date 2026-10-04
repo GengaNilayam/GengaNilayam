@@ -285,6 +285,7 @@
       <button type="button" class="btn btn-primary" id="admin-ebsplit-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">EB split for commercial spaces</button>
       <button type="button" class="btn btn-primary" id="admin-rent-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Rent Tracker</button>
       <button type="button" class="btn btn-primary" id="admin-docs-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Genga Nilayam Documents</button>
+      <button type="button" class="btn btn-primary" id="admin-muh-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Muhurtham Dates</button>
       <button type="button" class="btn btn-primary" id="admin-gn-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-gn-expenses-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Expenses</button>
       <button type="button" class="btn btn-primary" id="admin-gn-pl-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Generate GN profit/loss report</button>
@@ -516,6 +517,32 @@
       <div class="cal-actions" style="margin-top:18px;">
         <div></div>
         <button class="btn" id="docs-back" style="padding:10px 16px;background:#fff;color:var(--wood);border:2px solid var(--wood);">Back</button>
+      </div>
+    </div>
+    <div id="admin-muh-view" style="display:none;">
+      <div class="cal-title" style="text-align:left;margin-bottom:4px;">Muhurtham Dates</div>
+      <div class="cal-hint" style="margin-bottom:14px;">Valarpirai and theipirai muhurtham dates used for the booking calendar's highlighting and high-demand pricing. Add or remove dates here - changes apply right away on both the guest site and this admin calendar.</div>
+
+      <div id="muh-error-banner" style="display:none;background:#fde2e1;color:#b3261e;border:1px solid #f3b4b0;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
+
+      <div class="field-row" style="margin-bottom:10px;">
+        <div class="field"><label>Date</label>
+          <input type="date" id="muh-date-input" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;">
+        </div>
+        <div class="field"><label>Type</label>
+          <select id="muh-type-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;">
+            <option value="valarpirai">Valarpirai</option>
+            <option value="theipirai">Theipirai</option>
+          </select>
+        </div>
+      </div>
+      <button type="button" class="btn btn-primary" id="muh-add-btn" style="width:100%;padding:9px;margin-bottom:16px;">Add date</button>
+
+      <div id="muh-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+
+      <div class="cal-actions" style="margin-top:18px;">
+        <div></div>
+        <button class="btn" id="muh-back" style="padding:10px 16px;background:#fff;color:var(--wood);border:2px solid var(--wood);">Back</button>
       </div>
     </div>
     <div id="admin-gn-revenue-view" style="display:none;">
@@ -803,9 +830,11 @@ async function saveBlockedDatesFor(prop){
 /* ---------- Guest calendar picker ---------- */
 
 // Best-effort Tamil muhurtham dates for the rest of 2026, cross-referenced
-// across multiple calendar sources. Worth double-checking against a local
-// panchangam before relying on it - this is the one place to correct it.
-const MUHURTHAM_DATES = {
+// across multiple calendar sources. This is only the one-time SEED used to
+// populate Firestore the first time this loads - from then on, the real,
+// editable list lives in Firestore (doc 'muhurtham_dates') and is managed
+// from the "Muhurtham Dates" button in the admin panel.
+const SEED_MUHURTHAM_DATES = {
   '2026-09-17': 'valarpirai',
   '2026-10-25': 'valarpirai',
   '2026-10-30': 'theipirai',
@@ -899,6 +928,104 @@ const MUHURTHAM_DATES = {
   '2027-12-10': 'valarpirai',
 };
 
+// The real, editable muhurtham list - starts as a copy of the seed above
+// and is replaced with whatever's in Firestore as soon as loadMuhurthamDates()
+// resolves (called right after PIN entry, before the calendar first renders).
+let MUHURTHAM_DATES = Object.assign({}, SEED_MUHURTHAM_DATES);
+
+async function ensureMuhurthamDoc(){
+  const ref = db.collection('genga_nilayam').doc('muhurtham_dates');
+  const snap = await ref.get();
+  if(!snap.exists){
+    const seeded = { dates: Object.assign({}, SEED_MUHURTHAM_DATES) };
+    await ref.set(seeded);
+    return seeded;
+  }
+  const data = snap.data() || {};
+  if(!data.dates) data.dates = {};
+  return data;
+}
+
+async function loadMuhurthamDates(){
+  try{
+    const data = await ensureMuhurthamDoc();
+    MUHURTHAM_DATES = data.dates;
+  }catch(e){
+    console.error('Muhurtham dates: could not load', e);
+  }
+}
+
+function muhShowError(message){
+  const el = document.getElementById('muh-error-banner');
+  el.textContent = message;
+  el.style.display = 'block';
+}
+function muhClearError(){
+  document.getElementById('muh-error-banner').style.display = 'none';
+}
+
+function renderMuhurthamList(){
+  const el = document.getElementById('muh-list');
+  const keys = Object.keys(MUHURTHAM_DATES).sort();
+  if(!keys.length){
+    el.innerHTML = '<div class="cal-hint">No muhurtham dates yet.</div>';
+    return;
+  }
+  el.innerHTML = keys.map(key => {
+    const type = MUHURTHAM_DATES[key];
+    const dotColor = type === 'valarpirai' ? '#fb923c' : '#facc15';
+    const typeLabel = type === 'valarpirai' ? 'Valarpirai' : 'Theipirai';
+    const dateLabel = new Date(key + 'T00:00:00').toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric', weekday:'short' });
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="width:12px;height:12px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span>
+          <span style="font-size:13px;font-weight:600;">${dateLabel}</span>
+          <span style="font-size:12px;color:var(--ink-soft);">${typeLabel}</span>
+        </div>
+        <button type="button" class="btn muh-delete-btn" data-key="${key}" style="padding:6px 12px;background:#fff;color:#b3261e;border:1px solid #f3b4b0;font-size:12px;">Remove</button>
+      </div>`;
+  }).join('');
+  el.querySelectorAll('.muh-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteMuhurthamDate(btn.getAttribute('data-key')));
+  });
+}
+
+async function addMuhurthamDate(){
+  muhClearError();
+  const dateInput = document.getElementById('muh-date-input');
+  const typeSelect = document.getElementById('muh-type-select');
+  const key = dateInput.value;
+  if(!key){ muhShowError('Pick a date first.'); return; }
+  const type = typeSelect.value;
+  const btn = document.getElementById('muh-add-btn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try{
+    await db.collection('genga_nilayam').doc('muhurtham_dates').update({ ['dates.' + key]: type });
+    MUHURTHAM_DATES[key] = type;
+    renderMuhurthamList();
+    dateInput.value = '';
+  }catch(e){
+    console.error('Muhurtham dates: could not add', e);
+    muhShowError('Could not add date: ' + (e && e.message ? e.message : e));
+  }finally{
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+
+async function deleteMuhurthamDate(key){
+  muhClearError();
+  try{
+    await db.collection('genga_nilayam').doc('muhurtham_dates').update({ ['dates.' + key]: firebase.firestore.FieldValue.delete() });
+    delete MUHURTHAM_DATES[key];
+    renderMuhurthamList();
+  }catch(e){
+    console.error('Muhurtham dates: could not remove', e);
+    muhShowError('Could not remove date: ' + (e && e.message ? e.message : e));
+  }
+}
+
 function renderCalendarGrid(gridEl, titleEl, year, month, opts, blockedSet){
   // Used by the Quick Invoice date picker, scoped to whichever Home (or both)
   // is selected there - it always passes its own blockedSet explicitly. The
@@ -963,6 +1090,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   document.getElementById('admin-gn-pl-view').style.display = 'none';
   const t = new Date();
   adminViewYear = t.getFullYear(); adminViewMonth = t.getMonth();
+  await loadMuhurthamDates();
   await loadAllBlockedDates();
   renderAdminCalendar();
   await loadPendingRequests();
@@ -2864,6 +2992,19 @@ document.getElementById('admin-docs-btn').addEventListener('click', async () => 
 document.getElementById('docs-back').addEventListener('click', () => {
   document.getElementById('admin-docs-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
+});
+
+document.getElementById('admin-muh-btn').addEventListener('click', () => {
+  document.getElementById('admin-cal-view').style.display = 'none';
+  document.getElementById('admin-muh-view').style.display = 'block';
+  muhClearError();
+  renderMuhurthamList();
+});
+document.getElementById('muh-add-btn').addEventListener('click', addMuhurthamDate);
+document.getElementById('muh-back').addEventListener('click', () => {
+  document.getElementById('admin-muh-view').style.display = 'none';
+  document.getElementById('admin-cal-view').style.display = 'block';
+  renderAdminCalendar();
 });
 
 /* ---------- GN Revenue / GN Expenses / GN Profit-Loss ----------
