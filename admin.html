@@ -283,7 +283,10 @@
       <button type="button" class="btn btn-primary" id="admin-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate Homestay Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-quick-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Quick Invoice</button>
       <button type="button" class="btn btn-primary" id="admin-ebsplit-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">EB split for commercial spaces</button>
-      <button type="button" class="btn btn-primary" id="admin-rent-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Rent Tracker</button>
+      <button type="button" class="btn btn-primary" id="admin-rent-btn" style="width:100%;padding:10px 16px;margin-bottom:6px;">Rent Tracker</button>
+      <div id="admin-rent-btn-badge" style="display:none;text-align:center;margin-bottom:10px;">
+        <span style="background:#d3453f;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;">Rent/EB pending</span>
+      </div>
       <button type="button" class="btn btn-primary" id="admin-docs-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Genga Nilayam Documents</button>
       <button type="button" class="btn btn-primary" id="admin-muh-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Muhurtham Dates</button>
       <button type="button" class="btn btn-primary" id="admin-meter-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">EB Meter Numbers</button>
@@ -1107,6 +1110,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   await loadSiteVisits();
   await loadTodayCheckins();
   await loadNextCheckins();
+  await checkMainPageRentBadge();
 });
 document.getElementById('admin-cal-prev').addEventListener('click', ()=>{
   adminViewMonth--; if(adminViewMonth<0){ adminViewMonth=11; adminViewYear--; } renderAdminCalendar();
@@ -2542,6 +2546,22 @@ async function fetchRentUnitsData(mk, opts){
   return unitsData;
 }
 
+/** Checks the CURRENT calendar month across all 5 units and shows/hides the
+    "Rent/EB pending" badge under the Rent Tracker button on the main admin
+    page - so the admin can see at a glance, without opening Rent Tracker,
+    whether anything needs collecting this month. */
+async function checkMainPageRentBadge(){
+  try{
+    const now = new Date();
+    const mk = monthKeyFor(now.getFullYear(), now.getMonth());
+    const unitsData = await fetchRentUnitsData(mk, { autofill: true });
+    const anyPending = unitsData.some(({ md }) => Number(md.rentDueAmount) > 0 || Number(md.ebDueAmount) > 0);
+    document.getElementById('admin-rent-btn-badge').style.display = anyPending ? 'block' : 'none';
+  }catch(e){
+    console.error('Rent Tracker: could not check main-page pending badge', e);
+  }
+}
+
 let rentViewMode = 'month', rentViewFrom = null, rentViewTo = null;
 let rentSelectedUnitId = null; // which unit's details are expanded (month view only)
 let rentUnitsDataCache = []; // last fetched month data for all 5 units, so switching the
@@ -2781,9 +2801,10 @@ document.getElementById('rent-range-show').addEventListener('click', ()=>{
   loadRentTenants({ mode: 'range', from, to });
 });
 
-document.getElementById('rent-back').addEventListener('click', ()=>{
+document.getElementById('rent-back').addEventListener('click', async ()=>{
   document.getElementById('admin-rent-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
+  await checkMainPageRentBadge();
 });
 
 /* ---------- Genga Nilayam Documents ----------
