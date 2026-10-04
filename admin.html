@@ -2206,32 +2206,45 @@ const RENT_MONTH_FIELDS = ['rentAmount', 'rentDueAmount', 'ebAmount', 'ebDueAmou
 const RENT_NUMERIC_FIELDS = ['rentAmount', 'rentDueAmount', 'ebAmount', 'ebDueAmount', 'advancePaid'];
 let rentViewMonthKey = null;
 
+/** One input + its own small "Update" button - nothing saves until the
+    admin clicks Update on that specific field. */
+function rentFieldHtml(label, field, inputAttrs, value){
+  return `
+      <div class="field">
+        <label>${label}</label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input class="rent-f" data-field="${field}" ${inputAttrs} value="${value}" style="flex:1;min-width:0;">
+          <button type="button" class="rent-update-btn btn btn-primary" data-field="${field}" style="padding:7px 10px;font-size:11px;white-space:nowrap;flex:none;">Update</button>
+        </div>
+      </div>`;
+}
+
 function rentCardHtml(unit, r, md){
   const guestNumber = normalizePhone(r.phone || '');
   return `
   <div class="rent-card" data-id="${unit.id}" style="border:1px solid var(--line);border-radius:12px;padding:14px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-      <div style="font-weight:700;font-size:14.5px;">${unit.label}</div>
+      <div style="font-weight:700;font-size:14.5px;color:#0f766e;">${unit.label}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${rentPaidBadge(md)}
         ${rentAgreementBadge(r.agreementEnd)}
       </div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Tenant name</label><input class="rent-f" data-field="tenantName" value="${r.tenantName || ''}"></div>
-      <div class="field"><label>WhatsApp number</label><input class="rent-f" data-field="phone" value="${r.phone || ''}" placeholder="98470 12233"></div>
+      ${rentFieldHtml('Tenant name', 'tenantName', '', r.tenantName || '')}
+      ${rentFieldHtml('WhatsApp number', 'phone', 'placeholder="98470 12233"', r.phone || '')}
     </div>
     <div class="field-row">
-      <div class="field"><label>Rent amount (Rs.)</label><input class="rent-f" type="number" data-field="rentAmount" value="${md.rentAmount != null ? md.rentAmount : ''}"></div>
-      <div class="field"><label>Rent due amount (Rs.)</label><input class="rent-f" type="number" data-field="rentDueAmount" value="${md.rentDueAmount != null ? md.rentDueAmount : ''}"></div>
+      ${rentFieldHtml('Rent amount (Rs.)', 'rentAmount', 'type="number"', md.rentAmount != null ? md.rentAmount : '')}
+      ${rentFieldHtml('Rent due amount (Rs.)', 'rentDueAmount', 'type="number"', md.rentDueAmount != null ? md.rentDueAmount : '')}
     </div>
     <div class="field-row">
-      <div class="field"><label>EB amount (Rs.)</label><input class="rent-f" type="number" data-field="ebAmount" value="${md.ebAmount != null ? md.ebAmount : ''}"></div>
-      <div class="field"><label>EB due amount (Rs.)</label><input class="rent-f" type="number" data-field="ebDueAmount" value="${md.ebDueAmount != null ? md.ebDueAmount : ''}"></div>
+      ${rentFieldHtml('EB amount (Rs.)', 'ebAmount', 'type="number"', md.ebAmount != null ? md.ebAmount : '')}
+      ${rentFieldHtml('EB due amount (Rs.)', 'ebDueAmount', 'type="number"', md.ebDueAmount != null ? md.ebDueAmount : '')}
     </div>
     <div class="field-row">
-      <div class="field"><label>Agreement expiry date</label><input class="rent-f" type="date" data-field="agreementEnd" value="${r.agreementEnd || ''}"></div>
-      <div class="field"><label>Advance paid (Rs.)</label><input class="rent-f" type="number" data-field="advancePaid" value="${r.advancePaid != null ? r.advancePaid : ''}"></div>
+      ${rentFieldHtml('Agreement expiry date', 'agreementEnd', 'type="date"', r.agreementEnd || '')}
+      ${rentFieldHtml('Advance paid (Rs.)', 'advancePaid', 'type="number"', r.advancePaid != null ? r.advancePaid : '')}
     </div>
     <div class="field-row">
       <div class="field" style="display:flex;align-items:center;">
@@ -2266,9 +2279,11 @@ function renderRentSummary(unitsData){
  * own figures instead of overwriting the last one.
  * With autofill on (used by the editable Rent Tracker view, not reports),
  * a month with no entry yet is pre-filled with the most recent earlier
- * month's rent/EB amount (due amounts start at 0 for the new month) and
- * that starting point is saved immediately, so the reminder script and
- * reports always read a real, saved figure.
+ * month's rent/EB amount, and the new month starts fully DUE (due amount =
+ * the full rent/EB amount) - it only becomes "paid" once the admin clicks
+ * "Mark rent as paid" / "Mark EB bill as paid" (or edits the due amount by
+ * hand). That starting point is saved immediately, so the reminder script
+ * and reports always read a real, saved figure.
  */
 async function fetchRentUnitsData(mk, opts){
   opts = opts || {};
@@ -2306,11 +2321,13 @@ async function fetchRentUnitsData(mk, opts){
       if(opts.autofill){
         const priorKeys = Object.keys(months).filter(k => k < mk).sort();
         const prev = priorKeys.length ? months[priorKeys[priorKeys.length - 1]] : null;
+        const startRentAmount = prev ? (Number(prev.rentAmount) || 0) : (def.rentAmount != null ? def.rentAmount : 0);
+        const startEbAmount = prev ? (Number(prev.ebAmount) || 0) : 0;
         md = {
-          rentAmount: prev ? (Number(prev.rentAmount) || 0) : (def.rentAmount != null ? def.rentAmount : 0),
-          rentDueAmount: 0,
-          ebAmount: prev ? (Number(prev.ebAmount) || 0) : 0,
-          ebDueAmount: 0
+          rentAmount: startRentAmount,
+          rentDueAmount: startRentAmount, // due in full until "Mark rent as paid" is clicked
+          ebAmount: startEbAmount,
+          ebDueAmount: startEbAmount // due in full until "Mark EB bill as paid" is clicked
         };
         try{ await db.collection('genga_nilayam').doc(unit.id).set({ ['months.' + mk]: md }, { merge: true }); }catch(e){}
       } else {
@@ -2362,7 +2379,7 @@ function renderRentRangeSummary(data, from, to){
   let html = `<div class="cal-hint" style="margin-bottom:4px;">${fmtDate(from)} to ${fmtDate(to)} &middot; ${data.monthsCovered} month${data.monthsCovered === 1 ? '' : 's'} &middot; read-only - switch back to the month view to edit</div>`;
   html += data.perUnit.map(u => `
     <div style="border:1px solid var(--line);border-radius:12px;padding:14px;">
-      <div style="font-weight:700;font-size:14.5px;margin-bottom:8px;">${u.unit.label}</div>
+      <div style="font-weight:700;font-size:14.5px;margin-bottom:8px;color:#0f766e;">${u.unit.label}</div>
       <div style="font-size:13px;color:var(--ink-soft);margin-bottom:10px;">Total rent: Rs. ${u.totalRent.toLocaleString('en-IN')} &middot; Total due: Rs. ${u.totalDue.toLocaleString('en-IN')} &middot; EB: Rs. ${u.totalEb.toLocaleString('en-IN')} &middot; EB due: Rs. ${u.totalEbDue.toLocaleString('en-IN')}</div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         ${u.months.map(m => `
@@ -2408,9 +2425,10 @@ async function loadRentTenants(opts){
 function wireRentCards(){
   document.querySelectorAll('.rent-card').forEach(card => {
     const id = card.getAttribute('data-id');
-    card.querySelectorAll('.rent-f').forEach(input => {
-      input.addEventListener('change', async () => {
-        const field = input.getAttribute('data-field');
+    card.querySelectorAll('.rent-update-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const field = btn.getAttribute('data-field');
+        const input = card.querySelector('.rent-f[data-field="' + field + '"]');
         let value = input.value;
         const isMonthField = RENT_MONTH_FIELDS.indexOf(field) !== -1;
         const isNumericField = RENT_NUMERIC_FIELDS.indexOf(field) !== -1;
@@ -2418,9 +2436,13 @@ function wireRentCards(){
         const update = isMonthField
           ? { ['months.' + rentViewMonthKey + '.' + field]: value }
           : { [field]: value };
+        const original = btn.textContent;
+        btn.textContent = 'Saved';
         try{ await db.collection('genga_nilayam').doc(id).set(update, { merge: true }); }catch(e){}
         if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
           await loadRentTenants(); // refresh totals / expiry / paid badges
+        } else {
+          setTimeout(() => { btn.textContent = original; }, 900);
         }
       });
     });
