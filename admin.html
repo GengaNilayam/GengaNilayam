@@ -466,6 +466,8 @@
         <div class="cal-hint">Loading…</div>
       </div>
 
+      <div id="admin-rent-unit-buttons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
+
       <div id="admin-rent-list" style="display:flex;flex-direction:column;gap:14px;"></div>
 
       <div class="cal-actions" style="margin-top:18px;">
@@ -2340,6 +2342,45 @@ async function fetchRentUnitsData(mk, opts){
 }
 
 let rentViewMode = 'month', rentViewFrom = null, rentViewTo = null;
+let rentSelectedUnitId = null; // which unit's details are expanded (month view only)
+let rentUnitsDataCache = []; // last fetched month data for all 5 units, so switching the
+                              // selected unit doesn't re-hit Firestore
+
+/** Row of 5 small unit buttons (month view). Each shows a paid/due dot;
+    clicking one expands/collapses that unit's tenant, agreement and
+    rent/EB details below. */
+function renderRentUnitButtons(unitsData){
+  const el = document.getElementById('admin-rent-unit-buttons');
+  el.innerHTML = unitsData.map(({ unit, md }) => {
+    const paid = Number(md.rentDueAmount) <= 0 && Number(md.ebDueAmount) <= 0;
+    const active = unit.id === rentSelectedUnitId;
+    return `<button type="button" class="rent-unit-btn" data-id="${unit.id}" style="display:flex;align-items:center;gap:7px;padding:9px 14px;border-radius:99px;border:2px solid ${active ? '#0f766e' : 'var(--line)'};background:${active ? '#0f766e' : '#fff'};color:${active ? '#fff' : '#0f766e'};font-weight:700;font-size:13px;cursor:pointer;">
+      <span style="width:8px;height:8px;border-radius:99px;background:${paid ? '#2e9e52' : '#d3453f'};flex:none;"></span>
+      ${unit.label}
+    </button>`;
+  }).join('');
+  el.querySelectorAll('.rent-unit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      rentSelectedUnitId = (rentSelectedUnitId === id) ? null : id; // click again to collapse
+      renderRentUnitButtons(rentUnitsDataCache);
+      renderRentUnitDetail();
+    });
+  });
+}
+
+/** Shows the tenant/agreement/rent/EB card for whichever unit button is
+    selected, or a hint if none is. */
+function renderRentUnitDetail(){
+  const listEl = document.getElementById('admin-rent-list');
+  const entry = rentSelectedUnitId ? rentUnitsDataCache.find(u => u.unit.id === rentSelectedUnitId) : null;
+  if(!entry){
+    listEl.innerHTML = '<div class="cal-hint">Select a unit above to view and update its tenant, agreement and rent/EB details.</div>';
+    return;
+  }
+  listEl.innerHTML = rentCardHtml(entry.unit, entry.r, entry.md);
+  wireRentCards();
+}
 
 /** Read-only, per-unit-per-month paid/unpaid breakdown across a date range -
     this is the "report" view: every month the range touches shows whether
@@ -2406,6 +2447,7 @@ async function loadRentTenants(opts){
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
   try{
     if(rentViewMode === 'range'){
+      document.getElementById('admin-rent-unit-buttons').innerHTML = '';
       const data = await computeRentRangeData(rentViewFrom, rentViewTo);
       renderRentRangeSummary(data, rentViewFrom, rentViewTo);
       return;
@@ -2414,11 +2456,13 @@ async function loadRentTenants(opts){
     const month = Number(document.getElementById('rent-month-select').value);
     rentViewMonthKey = monthKeyFor(year, month);
     const unitsData = await fetchRentUnitsData(rentViewMonthKey, { autofill: true });
+    rentUnitsDataCache = unitsData;
     renderRentSummary(unitsData);
-    listEl.innerHTML = unitsData.map(({ unit, r, md }) => rentCardHtml(unit, r, md)).join('');
-    wireRentCards();
+    renderRentUnitButtons(unitsData);
+    renderRentUnitDetail();
   }catch(e){
-    listEl.innerHTML = '<div class="cal-hint">Could not load rent tracker.</div>';
+    console.error('Rent Tracker: could not load', e);
+    listEl.innerHTML = '<div class="cal-hint">Could not load rent tracker: ' + (e && e.message ? e.message : e) + '</div>';
   }
 }
 
@@ -2437,27 +2481,50 @@ function wireRentCards(){
           ? { ['months.' + rentViewMonthKey + '.' + field]: value }
           : { [field]: value };
         const original = btn.textContent;
-        btn.textContent = 'Saved';
-        try{ await db.collection('genga_nilayam').doc(id).set(update, { merge: true }); }catch(e){}
-        if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
-          await loadRentTenants(); // refresh totals / expiry / paid badges
-        } else {
-          setTimeout(() => { btn.textContent = original; }, 900);
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        try{
+          await db.collection('genga_nilayam').doc(id).set(update, { merge: true });
+          if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
+            await loadRentTenants(); // refresh totals / expiry / paid badges
+          } else {
+            btn.textContent = 'Saved';
+            setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 900);
+          }
+        }catch(e){
+          console.error('Rent Tracker: could not save ' + field, e);
+          alert('Could not save ' + field + ': ' + (e && e.message ? e.message : e));
+          btn.textContent = original;
+          btn.disabled = false;
         }
       });
     });
     const markRentBtn = card.querySelector('.rent-mark-rent-paid');
     if(markRentBtn){
       markRentBtn.addEventListener('click', async () => {
-        try{ await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.rentDueAmount']: 0 }, { merge: true }); }catch(e){}
-        await loadRentTenants();
+        markRentBtn.disabled = true;
+        try{
+          await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.rentDueAmount']: 0 }, { merge: true });
+          await loadRentTenants();
+        }catch(e){
+          console.error('Rent Tracker: could not mark rent as paid', e);
+          alert('Could not mark rent as paid: ' + (e && e.message ? e.message : e));
+          markRentBtn.disabled = false;
+        }
       });
     }
     const markEbBtn = card.querySelector('.rent-mark-eb-paid');
     if(markEbBtn){
       markEbBtn.addEventListener('click', async () => {
-        try{ await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.ebDueAmount']: 0 }, { merge: true }); }catch(e){}
-        await loadRentTenants();
+        markEbBtn.disabled = true;
+        try{
+          await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.ebDueAmount']: 0 }, { merge: true });
+          await loadRentTenants();
+        }catch(e){
+          console.error('Rent Tracker: could not mark EB bill as paid', e);
+          alert('Could not mark EB bill as paid: ' + (e && e.message ? e.message : e));
+          markEbBtn.disabled = false;
+        }
       });
     }
   });
@@ -2467,6 +2534,7 @@ document.getElementById('admin-rent-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'none';
   document.getElementById('admin-rent-view').style.display = 'block';
   rentViewMode = 'month'; rentViewFrom = null; rentViewTo = null;
+  rentSelectedUnitId = null;
   resetRangeUi('rent');
   populateMonthYearSelects('rent-month-select', 'rent-year-select');
   await loadRentTenants({ mode: 'month' });
