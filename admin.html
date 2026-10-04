@@ -232,6 +232,36 @@
     .field-row{ grid-template-columns:1fr; }
     .hero{ height:64vh; }
   }
+  /* ---------- Data Analysis view ---------- */
+  .cal-modal.wide{ max-width:980px; }
+  #admin-da-view .da-root{ --da-ink:#0b0b0b; --da-ink2:#52514e; --da-mute:#898781; --da-grid:#e1e0d9; --da-base:#c3c2b7; --da-surf:#fcfcfb; color:var(--da-ink); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+  #admin-da-view .da-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px; }
+  #admin-da-view .da-kpi{ background:var(--da-surf); border:1px solid rgba(11,11,11,.10); border-radius:12px; padding:12px 14px; }
+  #admin-da-view .da-kpi .l{ font-size:11.5px; color:var(--da-ink2); margin-bottom:4px; }
+  #admin-da-view .da-kpi .v{ font-size:22px; font-weight:700; line-height:1.15; }
+  #admin-da-view .da-kpi .s{ font-size:11.5px; color:var(--da-ink2); margin-top:3px; }
+  #admin-da-view .da-sec{ font-family:'Fraunces',serif; font-weight:700; font-size:17px; margin:22px 0 4px; color:var(--deep-2); }
+  #admin-da-view .da-secsub{ font-size:12.5px; color:var(--da-ink2); margin:0 0 10px; }
+  #admin-da-view .da-cols{ display:grid; grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr)); gap:12px; }
+  #admin-da-view .da-card{ background:var(--da-surf); border:1px solid rgba(11,11,11,.10); border-radius:12px; padding:12px 14px 8px; min-width:0; }
+  #admin-da-view .da-card h4{ margin:0 0 2px; font-size:14px; font-weight:700; }
+  #admin-da-view .da-card .sub{ font-size:12px; color:var(--da-ink2); margin:0 0 6px; }
+  #admin-da-view svg{ width:100%; height:auto; display:block; overflow:visible; }
+  #admin-da-view svg text{ font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+  #admin-da-view .da-legend{ display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:var(--da-ink2); margin:2px 0 4px; }
+  #admin-da-view .da-legend i{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+  #admin-da-view table.da-tbl{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  #admin-da-view table.da-tbl th, #admin-da-view table.da-tbl td{ text-align:right; padding:6px 8px; border-bottom:1px solid var(--da-grid); white-space:nowrap; }
+  #admin-da-view table.da-tbl th:first-child, #admin-da-view table.da-tbl td:first-child{ text-align:left; }
+  #admin-da-view table.da-tbl th{ color:var(--da-ink2); font-weight:600; font-size:11.5px; }
+  #admin-da-view .da-scroll{ overflow-x:auto; }
+  #admin-da-view .da-insights{ background:#f6f5f1; border-radius:12px; padding:12px 16px; font-size:13.5px; line-height:1.55; }
+  #admin-da-view .da-insights li{ margin-bottom:4px; }
+  #admin-da-view details{ margin-top:10px; }
+  #admin-da-view summary{ cursor:pointer; font-size:13px; font-weight:600; color:var(--wood); }
+  #da-tip{ position:fixed; z-index:300; pointer-events:none; background:#0b0b0b; color:#fff; font-size:12px; line-height:1.4; padding:6px 10px; border-radius:8px; max-width:240px; display:none; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+  .da-up{ color:#006300; } .da-down{ color:#b3261e; }
+
 </style>
 </head>
 <body>
@@ -301,7 +331,8 @@
       </div>
       <button type="button" class="btn btn-primary" id="admin-gn-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-gn-expenses-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Expenses</button>
-      <button type="button" class="btn btn-primary" id="admin-gn-pl-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Generate GN profit/loss report</button>
+      <button type="button" class="btn btn-primary" id="admin-gn-pl-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN profit/loss report</button>
+      <button type="button" class="btn btn-primary" id="admin-da-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Data Analysis</button>
       <div id="admin-visits-section" style="margin-bottom:18px;">
         <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Guest site visits</div>
         <div id="admin-visits-summary" style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -669,6 +700,22 @@
         <button class="btn btn-primary" id="gn-pl-back" style="padding:10px 16px;">Back</button>
       </div>
     </div>
+    <div id="admin-da-view" style="display:none;">
+      <div class="da-root" id="da-root">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+          <div class="cal-title" style="text-align:left;flex:none;">Data Analysis</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <label for="da-prop" style="font-size:12.5px;color:var(--da-ink2);">Property</label>
+            <select id="da-prop" style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:13.5px;"></select>
+            <button class="btn btn-primary" id="da-back" style="padding:9px 16px;">Back</button>
+          </div>
+        </div>
+        <div class="cal-hint" id="da-note" style="margin-bottom:12px;">Loading booking data…</div>
+        <div id="da-body"></div>
+      </div>
+      <div id="da-tip"></div>
+    </div>
+
     <div id="admin-invoice-view" style="display:none;">
       <div class="cal-title" style="text-align:left;margin-bottom:14px;">Create invoice</div>
       <div class="field"><label>Guest name</label><input id="inv-name"></div>
@@ -1101,6 +1148,8 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   document.getElementById('admin-gn-revenue-view').style.display = 'none';
   document.getElementById('admin-gn-expenses-view').style.display = 'none';
   document.getElementById('admin-gn-pl-view').style.display = 'none';
+  document.getElementById('admin-da-view').style.display = 'none';
+  document.querySelector('#admin-overlay .cal-modal').classList.remove('wide');
   const t = new Date();
   adminViewYear = t.getFullYear(); adminViewMonth = t.getMonth();
   await loadMuhurthamDates();
@@ -3383,6 +3432,347 @@ document.getElementById('admin-gn-pl-btn').addEventListener('click', async ()=>{
   await generateGnPlReport({ mode: 'month', year: new Date().getFullYear(), month: new Date().getMonth() });
 });
 wireRangeToggle('gnpl', generateGnPlReport);
+
+/* ---------- Data Analysis ----------
+   Reads every invoiced booking from Firestore (same source as the revenue
+   reports) and draws booking-frequency / revenue / YoY charts as plain SVG.
+   Nothing here writes to the database. */
+const DA_MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DA_DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DA_YCOL = {2023:'#eda100',2024:'#2a78d6',2025:'#eb6834',2026:'#1baf7a',2027:'#e87ba4',2028:'#4a3aa7'};
+const DA_SEQ = ['#cde2fb','#9ec5f4','#6da7ec','#3987e5','#256abf','#184f95','#0d366b'];
+// 2025 wedding muhurtham dates from a public Tamil calendar (the app's own list starts Sep 2026).
+const DA_MUH_2025 = {1:[19,20,31],2:[2,3,10,16,17,23,26],3:[2,3,9,10,12,16,17],4:[4,7,9,11,16,18,23,25,30],5:[4,9,11,14,16,18,19,23,28],6:[5,6,8,16,27],7:[2,7,13,14,16],8:[20,21,27,28,29],9:[4,14],10:[19,20,24,27,31],11:[3,10,16,23,27,30],12:[1,8,10,14,15]};
+let daAll = null;      // every invoiced booking (parsed)
+let daWired = false;
+let DA_HEAT_W = 560;
+let DA_W = 520;   // chart drawing width, set from the card width at render time
+
+function daInr(n){ return '₹' + Math.round(n).toLocaleString('en-IN'); }
+function daShort(n){
+  n = Math.round(n);
+  const t = x => String(x).replace(/\.?0+$/, '');
+  if(n >= 1e7) return '₹' + t((n/1e7).toFixed(2)) + 'Cr';
+  if(n >= 1e5) return '₹' + t((n/1e5).toFixed(2)) + 'L';
+  if(n >= 1e3) return '₹' + t((n/1e3).toFixed(1)) + 'k';
+  return '₹' + n;
+}
+function daPct(a, b){ return b > 0 ? (a - b) / b * 100 : null; }
+function daPctTxt(p){ return p === null ? 'n/a' : (p >= 0 ? '+' : '') + p.toFixed(1) + '%'; }
+function daDelta(p){
+  if(p === null) return '<span style="color:var(--da-mute)">n/a</span>';
+  return '<span class="' + (p >= 0 ? 'da-up' : 'da-down') + '">' + (p >= 0 ? '▲ ' : '▼ ') + Math.abs(p).toFixed(1) + '%</span>';
+}
+function daYcol(y){ return DA_YCOL[y] || '#898781'; }
+function daNice(max){
+  if(max <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(max)));
+  for(const m of [1, 2, 2.5, 5, 10]) if(max <= m * p) return m * p;
+  return 10 * p;
+}
+function daTipAttr(s){ return 'data-tip="' + String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"'; }
+
+/* ----- chart builders (return SVG strings) ----- */
+function daAxis(W, H, pl, pr, pt, pb, top, fmt){
+  const pw = W - pl - pr, ph = H - pt - pb; let s = '';
+  for(let i = 0; i <= 4; i++){
+    const v = top * i / 4, y = pt + ph - ph * i / 4;
+    s += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y + '" y2="' + y + '" stroke="' + (i === 0 ? '#c3c2b7' : '#e1e0d9') + '" stroke-width="1"/>';
+    s += '<text x="' + (pl - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#898781">' + fmt(v) + '</text>';
+  }
+  return s;
+}
+function daBars(items, o){
+  o = o || {};
+  const W = DA_W, H = o.h || 230, pl = o.pl || 46, pr = 8, pt = 26, pb = 28, fmt = o.fmt || (v => Math.round(v));
+  const pw = W - pl - pr, ph = H - pt - pb, n = items.length;
+  const top = daNice(Math.max.apply(null, items.map(i => i.value).concat([1])));
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + (o.label || 'bar chart') + '">' + daAxis(W, H, pl, pr, pt, pb, top, fmt);
+  const slot = pw / n, bw = Math.min(54, slot * 0.62);
+  items.forEach((it, i) => {
+    const x = pl + slot * i + (slot - bw) / 2, h = ph * it.value / top, y = pt + ph - h;
+    const col = it.color || o.color || '#2a78d6', r = Math.min(4, bw / 2, h);
+    if(h > 0.5) s += '<path d="M' + x + ',' + (y + h) + 'V' + (y + r) + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + y + ' ' + (x + bw) + ',' + (y + r) + 'V' + (y + h) + 'Z" fill="' + col + '"/>';
+    s += '<rect x="' + (pl + slot * i) + '" y="' + pt + '" width="' + slot + '" height="' + ph + '" fill="transparent" ' + daTipAttr(it.tip || (it.label + ': ' + fmt(it.value))) + '/>';
+    if(n <= 14){
+      s += '<text x="' + (x + bw / 2) + '" y="' + (y - (it.sub ? 15 : 5)) + '" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0b0b0b">' + (it.top || fmt(it.value)) + '</text>';
+      if(it.sub) s += '<text x="' + (x + bw / 2) + '" y="' + (y - 4) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="' + (it.subColor || '#52514e') + '">' + it.sub + '</text>';
+    }
+    s += '<text x="' + (x + bw / 2) + '" y="' + (H - 9) + '" text-anchor="middle" font-size="11" fill="#52514e">' + it.label + '</text>';
+  });
+  return s + '</svg>';
+}
+function daLines(series, xl, o){
+  o = o || {};
+  const W = DA_W, H = o.h || 240, pl = o.pl || 46, pr = 14, pt = 14, pb = 28, fmt = o.fmt || (v => Math.round(v));
+  const pw = W - pl - pr, ph = H - pt - pb, n = xl.length;
+  const top = daNice(Math.max.apply(null, [1].concat.apply([], series.map(s => s.values.filter(v => v !== null)))));
+  const X = i => pl + pw * (n === 1 ? 0.5 : i / (n - 1)), Y = v => pt + ph - ph * v / top;
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + (o.label || 'line chart') + '">' + daAxis(W, H, pl, pr, pt, pb, top, fmt);
+  const step = n > 14 ? Math.ceil(n / (W < 400 ? 5 : 8)) : (W < 400 && n > 7 ? 2 : 1);
+  xl.forEach((l, i) => { if(i % step === 0) s += '<text x="' + X(i) + '" y="' + (H - 9) + '" text-anchor="middle" font-size="11" fill="#52514e">' + l + '</text>'; });
+  series.forEach(se => {
+    let d = '', pen = false;
+    se.values.forEach((v, i) => { if(v === null){ pen = false; return; } d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1); pen = true; });
+    s += '<path d="' + d + '" fill="none" stroke="' + se.color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"' + (se.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
+  });
+  if(!o.noDots) series.forEach(se => se.values.forEach((v, i) => {
+    if(v === null) return;
+    s += '<circle cx="' + X(i) + '" cy="' + Y(v) + '" r="3.5" fill="' + se.color + '" stroke="#fcfcfb" stroke-width="2"/>';
+  }));
+  series.forEach(se => se.values.forEach((v, i) => {
+    if(v === null) return;
+    s += '<circle cx="' + X(i) + '" cy="' + Y(v) + '" r="11" fill="transparent" ' + daTipAttr(se.name + ' • ' + xl[i] + ': ' + (o.tipFmt || fmt)(v)) + '/>';
+  }));
+  return s + '</svg>';
+}
+function daLegend(series){ return '<div class="da-legend">' + series.map(s => '<span><i style="background:' + s.color + '"></i>' + s.name + '</span>').join('') + '</div>'; }
+function daHeat(rowLabels, grid, fmt, tipName){
+  const W = DA_HEAT_W, pl = 44, pt = 22, cw = (W - pl - 4) / 12, ch = 30, H = pt + ch * rowLabels.length + 6;
+  const max = Math.max.apply(null, [1].concat.apply([], grid));
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="heatmap" style="min-width:560px">';
+  DA_MON.forEach((m, c) => { s += '<text x="' + (pl + cw * c + cw / 2) + '" y="14" text-anchor="middle" font-size="11" fill="#52514e">' + m + '</text>'; });
+  rowLabels.forEach((rl, r) => {
+    s += '<text x="' + (pl - 8) + '" y="' + (pt + ch * r + ch / 2 + 4) + '" text-anchor="end" font-size="11.5" fill="#52514e">' + rl + '</text>';
+    for(let c = 0; c < 12; c++){
+      const v = grid[r][c]; if(v === null){ continue; }
+      const idx = v <= 0 ? -1 : Math.min(6, Math.floor(v / max * 6.999));
+      const x = pl + cw * c + 1, y = pt + ch * r + 1;
+      s += '<rect x="' + x + '" y="' + y + '" width="' + (cw - 2) + '" height="' + (ch - 2) + '" rx="4" fill="' + (idx < 0 ? '#f0efec' : DA_SEQ[idx]) + '" ' + daTipAttr(rl + ' ' + DA_MON[c] + ': ' + fmt(v) + ' ' + tipName) + '/>';
+      s += '<text x="' + (x + (cw - 2) / 2) + '" y="' + (y + ch / 2 + 3) + '" text-anchor="middle" font-size="10.5" font-weight="600" pointer-events="none" fill="' + (idx >= 3 ? '#fff' : (idx < 0 ? '#898781' : '#0b0b0b')) + '">' + (v > 0 ? fmt(v) : '–') + '</text>';
+    }
+  });
+  return '<div class="da-scroll">' + s + '</svg></div>';
+}
+function daCard(title, sub, inner, legend){ return '<div class="da-card"><h4>' + title + '</h4>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + (legend || '') + inner + '</div>'; }
+function daSum(arr, f){ return arr.reduce((a, x) => a + f(x), 0); }
+
+/* ----- data load ----- */
+async function daLoad(){
+  const snap = await db.collection('genga_nilayam').get();
+  const out = [];
+  snap.forEach(doc => {
+    const d = doc.data();
+    if(!doc.id.startsWith('request_') || d.status !== 'invoiced' || !d.checkin) return;
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d.checkin); if(!m) return;
+    const y = +m[1], mo = +m[2] - 1, dd = +m[3];
+    out.push({ date: d.checkin.slice(0, 10), y: y, m: mo, d: dd, dow: new Date(y, mo, dd).getDay(), total: Number(d.total) || 0,
+      prop: d.propertyName || d.property || 'Property', phone: String(d.phone || '').replace(/\D/g, '').slice(-10) });
+  });
+  out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  return out;
+}
+
+/* ----- render ----- */
+function daRender(){
+  const body = document.getElementById('da-body'), note = document.getElementById('da-note');
+  const sel = document.getElementById('da-prop').value;
+  { const cwid = body.clientWidth || 320, cols = cwid >= 880 ? 2 : 1; DA_W = Math.round(Math.max(290, Math.min(560, cwid / cols - 40))); DA_HEAT_W = cwid >= 880 ? 860 : 560; }
+  const B = daAll.filter(b => sel === '__all' || b.prop === sel);
+  if(!B.length){ body.innerHTML = '<div class="cal-hint">No invoiced bookings found for this selection.</div>'; note.textContent = ''; return; }
+  const now = new Date(), curY = now.getFullYear(), todayKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  const mdToday = todayKey.slice(5);
+  const years = []; B.forEach(b => { if(years.indexOf(b.y) < 0) years.push(b.y); }); years.sort();
+  const lastDate = B[B.length - 1].date, firstDate = B[0].date;
+  const upTo = lastDate < todayKey ? lastDate : todayKey;           // data cut-off for "so far" comparisons
+  const mdCut = upTo.slice(5);
+  const mdLbl = (+upTo.slice(8)) + ' ' + DA_MON[+upTo.slice(5, 7) - 1];
+  note.textContent = 'Based on ' + B.length + ' invoiced bookings by check-in date, ' + firstDate + ' to ' + lastDate + '. Cancelled and pending requests are not counted.';
+
+  const yr = {}; years.forEach(y => {
+    const L = B.filter(b => b.y === y), ytd = L.filter(b => b.date.slice(5) <= mdCut);
+    yr[y] = { n: L.length, rev: daSum(L, b => b.total), ytdN: ytd.length, ytdRev: daSum(ytd, b => b.total) };
+    yr[y].avg = yr[y].n ? yr[y].rev / yr[y].n : 0;
+    const mn = new Array(12).fill(0), mr = new Array(12).fill(0); L.forEach(b => { mn[b.m]++; mr[b.m] += b.total; });
+    yr[y].mn = mn; yr[y].mr = mr;
+  });
+  const fullYears = years.filter(y => yr[y].n >= 20);                // ignore stub years (e.g. only Dec 2023)
+  const total = B.length, totRev = daSum(B, b => b.total);
+
+  // rolling 12 months vs the 12 before, ending at the data cut-off
+  const cutD = new Date(upTo + 'T00:00:00'), d12 = new Date(cutD); d12.setFullYear(d12.getFullYear() - 1); const d24 = new Date(d12); d24.setFullYear(d24.getFullYear() - 1);
+  const k = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const r1 = B.filter(b => b.date > k(d12) && b.date <= upTo), r0 = B.filter(b => b.date > k(d24) && b.date <= k(d12));
+  const r1n = r1.length, r0n = r0.length, r1r = daSum(r1, b => b.total), r0r = daSum(r0, b => b.total);
+
+  let h = '';
+  /* KPI tiles */
+  const kp = (l, v, s) => '<div class="da-kpi"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
+  h += '<div class="da-grid">'
+    + kp('Total bookings', total, 'since ' + firstDate)
+    + kp('Total revenue', daShort(totRev), daInr(totRev))
+    + kp('Average booking value', daInr(totRev / total), 'revenue ÷ bookings')
+    + kp('Last 12 months', r1n + ' bookings', daShort(r1r) + ' • vs prior 12 months: ' + daDelta(daPct(r1n, r0n)) + ' bookings, ' + daDelta(daPct(r1r, r0r)) + ' revenue')
+    + kp('Booking frequency', r1n ? (365 / r1n).toFixed(1) + ' days' : 'n/a', 'one booking every ~' + (r1n ? (365 / r1n).toFixed(1) : '-') + ' days (last 12 months), ' + (r1n / 12).toFixed(1) + ' per month')
+    + '</div>';
+
+  /* Insights */
+  const ins = [];
+  const fy = fullYears;
+  if(fy.length >= 2){
+    const a = fy[fy.length - 2], b2 = fy[fy.length - 1];
+    if(b2 === curY && upTo.slice(0, 4) == curY){
+      const ytdA = yr[b2 - 1] ? yr[b2 - 1].ytdN : 0, ytdAr = yr[b2 - 1] ? yr[b2 - 1].ytdRev : 0;
+      ins.push('So far in ' + b2 + ' (to ' + mdLbl + '): ' + yr[b2].ytdN + ' bookings / ' + daShort(yr[b2].ytdRev) + ' vs ' + ytdA + ' / ' + daShort(ytdAr) + ' in the same period of ' + (b2 - 1) + ' (' + daPctTxt(daPct(yr[b2].ytdN, ytdA)) + ' bookings, ' + daPctTxt(daPct(yr[b2].ytdRev, ytdAr)) + ' revenue).');
+    } else ins.push(a + ' → ' + b2 + ': bookings ' + daPctTxt(daPct(yr[b2].n, yr[a].n)) + ', revenue ' + daPctTxt(daPct(yr[b2].rev, yr[a].rev)) + '.');
+  }
+  const monAll = new Array(12).fill(0); B.forEach(b => monAll[b.m]++);
+  const best = monAll.indexOf(Math.max.apply(null, monAll)), worst = monAll.indexOf(Math.min.apply(null, monAll));
+  ins.push('Busiest month overall: ' + DA_MON[best] + ' (' + monAll[best] + ' bookings). Quietest: ' + DA_MON[worst] + ' (' + monAll[worst] + ').');
+  const dowN = new Array(7).fill(0), dowR = new Array(7).fill(0); B.forEach(b => { dowN[b.dow]++; dowR[b.dow] += b.total; });
+  const bd = dowN.indexOf(Math.max.apply(null, dowN)); const wk = dowN[5] + dowN[6] + dowN[0];
+  ins.push('Most check-ins fall on ' + DA_DOW[bd] + ' (' + Math.round(dowN[bd] / total * 100) + '%). Fri–Sun together: ' + Math.round(wk / total * 100) + '% of bookings and ' + Math.round((dowR[5] + dowR[6] + dowR[0]) / totRev * 100) + '% of revenue.');
+  const big = B.slice().sort((a, b) => b.total - a.total);
+  const top10 = daSum(big.slice(0, 10), b => b.total);
+  ins.push('The 10 largest bookings account for ' + Math.round(top10 / totRev * 100) + '% of all revenue (' + daShort(top10) + ').');
+  h += '<div class="da-sec" style="margin-top:6px;">Key takeaways</div><ul class="da-insights">' + ins.map(t => '<li>' + t + '</li>').join('') + '</ul>';
+
+  /* Year over year */
+  h += '<div class="da-sec">Year over year</div><div class="da-secsub">The current year is incomplete, so it is also compared against the same date range of earlier years (see the table).</div><div class="da-cols">';
+  const unfin = y => y === years[years.length - 1] && upTo < y + '-12-20';
+  // YoY %: skip stub years; for the unfinished year compare the same dates of the previous year
+  const yoyP = (i, f, g) => { if(!i) return null; const y = years[i], pv = yr[years[i - 1]]; if(pv.n < 20) return null; return unfin(y) ? daPct(yr[y][g], pv[g]) : daPct(yr[y][f], pv[f]); };
+  const yoyTxt = p => p === null ? '' : daPctTxt(p), yoyCol = p => p === null ? '' : (p >= 0 ? '#006300' : '#b3261e');
+  const yb = years.map((y, i) => { const pc = yoyP(i, 'n', 'ytdN'); return { label: String(y) + (unfin(y) ? '*' : ''), value: yr[y].n, tip: y + ': ' + yr[y].n + ' bookings' + (pc === null ? '' : ' (' + daPctTxt(pc) + (unfin(y) ? ' vs same dates of ' + (y - 1) : ' vs ' + (y - 1)) + ')'), sub: yoyTxt(pc), subColor: yoyCol(pc) }; });
+  h += daCard('Bookings per year', 'Number of invoiced check-ins; % = change vs previous year. For the unfinished year (*) it compares the same dates of the previous year.', daBars(yb, { label: 'Bookings per year', color: '#2a78d6' }));
+  const yrv = years.map((y, i) => { const pc = yoyP(i, 'rev', 'ytdRev'); return { label: yb[i].label, value: yr[y].rev, top: daShort(yr[y].rev), tip: y + ': ' + daInr(yr[y].rev) + (pc === null ? '' : ' (' + daPctTxt(pc) + (unfin(y) ? ' vs same dates of ' + (y - 1) : ' vs ' + (y - 1)) + ')'), sub: yoyTxt(pc), subColor: yoyCol(pc) }; });
+  h += daCard('Revenue per year', 'Sum of invoice totals; % = change vs previous year (same-dates comparison for the unfinished year*).', daBars(yrv, { label: 'Revenue per year', color: '#2a78d6', fmt: daShort }));
+  const yav = years.map(y => ({ label: String(y), value: yr[y].avg, top: daShort(yr[y].avg), tip: y + ': ' + daInr(yr[y].avg) + ' per booking' }));
+  h += daCard('Average booking value', 'Revenue ÷ bookings, per year.', daBars(yav, { label: 'Average booking value', color: '#2a78d6', fmt: daShort }));
+  const ytdYears = years.filter(y => y <= +upTo.slice(0, 4) && yr[y].n >= 20);
+  const ytdBars = ytdYears.map((y, i) => ({ label: String(y), value: yr[y].ytdRev, top: daShort(yr[y].ytdRev), tip: y + ' (1 Jan–' + mdLbl + '): ' + yr[y].ytdN + ' bookings, ' + daInr(yr[y].ytdRev), sub: i ? daPctTxt(daPct(yr[y].ytdRev, yr[ytdYears[i - 1]].ytdRev)) : '', subColor: i ? (yr[y].ytdRev >= yr[ytdYears[i - 1]].ytdRev ? '#006300' : '#b3261e') : '' }));
+  h += daCard('Revenue, same period each year', 'Only 1 Jan to ' + mdLbl + ' of every year – a fair like-for-like comparison.', daBars(ytdBars, { label: 'Same-period revenue', color: '#eb6834', fmt: daShort }));
+  h += '</div>';
+
+  h += '<div class="da-card" style="margin-top:12px;"><h4>Year summary</h4><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Year</th><th>Bookings</th><th>YoY</th><th>Revenue</th><th>YoY</th><th>Avg booking</th><th>Per month</th><th>Same period*</th><th>YoY</th></tr></thead><tbody>';
+  years.forEach((y, i) => {
+    const p = i ? yr[years[i - 1]] : null, q = yr[y];
+    h += '<tr><td>' + y + '</td><td>' + q.n + '</td><td>' + (yoyP(i, 'n', 'ytdN') === null ? '–' : daDelta(yoyP(i, 'n', 'ytdN'))) + '</td><td>' + daInr(q.rev) + '</td><td>' + (yoyP(i, 'rev', 'ytdRev') === null ? '–' : daDelta(yoyP(i, 'rev', 'ytdRev'))) + '</td><td>' + daInr(q.avg) + '</td><td>' + (q.n / 12).toFixed(1) + '</td><td>' + (y <= +upTo.slice(0, 4) ? q.ytdN + ' / ' + daShort(q.ytdRev) : '–') + '</td><td>' + (p && p.n >= 20 && y <= +upTo.slice(0, 4) ? daDelta(daPct(q.ytdRev, p.ytdRev)) : '–') + '</td></tr>';
+  });
+  h += '</tbody></table></div><div class="sub" style="margin-top:6px;">*1 Jan to ' + mdLbl + ' of each year, revenue growth vs the previous year’s same period. For an unfinished year the YoY columns use that same-dates comparison. "Per month" divides by 12, so it understates unfinished years. 2023 is a stub (data starts 13 Dec), so no growth is calculated for 2024.</div></div>';
+
+  /* Monthly patterns */
+  const lineYears = years.filter(y => yr[y].n >= 20);
+  h += '<div class="da-sec">Booking frequency by month</div><div class="da-secsub">Hover (or tap) any point for exact values. Years with only a few bookings are left out of the lines.</div><div class="da-cols">';
+  const sN = lineYears.map(y => ({ name: String(y), color: daYcol(y), values: yr[y].mn.map((v, m) => (y === +upTo.slice(0, 4) && m > +upTo.slice(5, 7) - 1) ? null : v) }));
+  h += daCard('Bookings per month', 'Each line is a year.', daLines(sN, DA_MON, { label: 'Bookings per month' }), daLegend(sN));
+  const sR = lineYears.map(y => ({ name: String(y), color: daYcol(y), values: yr[y].mr.map((v, m) => (y === +upTo.slice(0, 4) && m > +upTo.slice(5, 7) - 1) ? null : v) }));
+  h += daCard('Revenue per month', 'Invoice totals by check-in month.', daLines(sR, DA_MON, { label: 'Revenue per month', fmt: daShort, tipFmt: daInr }), daLegend(sR));
+  const sC = lineYears.map(y => { let c = 0; return { name: String(y), color: daYcol(y), values: yr[y].mr.map((v, m) => { if(y === +upTo.slice(0, 4) && m > +upTo.slice(5, 7) - 1) return null; c += v; return c; }) }; });
+  h += daCard('Cumulative revenue through the year', 'How fast each year builds up – compare the lines at any month.', daLines(sC, DA_MON, { label: 'Cumulative revenue', fmt: daShort, tipFmt: daInr }), daLegend(sC));
+  // all-time monthly timeline with 3-month moving average
+  const tl = []; const [fyr, fmo] = [years[0], B[0].m]; let cy = fyr, cm = fmo;
+  const endY = +upTo.slice(0, 4), endM = +upTo.slice(5, 7) - 1; const cnt = {}; B.forEach(b => { const kk = b.y * 12 + b.m; cnt[kk] = (cnt[kk] || 0) + 1; });
+  while(cy < endY || (cy === endY && cm <= endM)){ tl.push({ l: DA_MON[cm] + ' ' + String(cy).slice(2), v: cnt[cy * 12 + cm] || 0 }); cm++; if(cm > 11){ cm = 0; cy++; } }
+  const tlStart = tl.length > 36 ? tl.length - 36 : 0, tls = tl.slice(tlStart);
+  const ma = tl.map((x, i) => i >= 2 ? (tl[i].v + tl[i - 1].v + tl[i - 2].v) / 3 : null).slice(tlStart);
+  const tlSeries = [{ name: 'Bookings', color: '#2a78d6', values: tls.map(x => x.v) }, { name: '3-month average', color: '#eb6834', values: ma, dash: true }];
+  h += daCard('Month-by-month trend' + (tlStart ? ' (last 36 months)' : ''), 'Monthly bookings with a 3-month moving average to smooth out wedding-season spikes.', daLines(tlSeries, tls.map(x => x.l), { label: 'Monthly trend', tipFmt: v => (Math.round(v * 10) / 10) + ' bookings', noDots: tls.length > 20 }), daLegend(tlSeries));
+  h += '</div>';
+
+  h += '<div class="da-sec">Heatmaps</div><div class="da-secsub">Darker = more. Empty cells (–) mean no bookings; blank = month not yet reached.</div><div class="da-cols" style="grid-template-columns:1fr">';
+  const gN = lineYears.map(y => yr[y].mn.map((v, m) => (y === +upTo.slice(0, 4) && m > +upTo.slice(5, 7) - 1) ? null : v));
+  h += daCard('Bookings: month × year', 'Count of check-ins.', daHeat(lineYears.map(String), gN, v => String(v), 'bookings'));
+  const gR = lineYears.map(y => yr[y].mr.map((v, m) => (y === +upTo.slice(0, 4) && m > +upTo.slice(5, 7) - 1) ? null : v));
+  h += daCard('Revenue: month × year', 'Invoice totals.', daHeat(lineYears.map(String), gR, v => daShort(v), 'revenue'));
+  h += '</div>';
+
+  /* Day-of-week and value distribution */
+  h += '<div class="da-sec">When and how much</div><div class="da-cols">';
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  h += daCard('Check-ins by day of week', 'All years combined.', daBars(order.map(d => ({ label: DA_DOW[d], value: dowN[d], tip: DA_DOW[d] + ': ' + dowN[d] + ' bookings (' + Math.round(dowN[d] / total * 100) + '%)' })), { label: 'Check-ins by weekday', color: '#2a78d6' }));
+  h += daCard('Average booking value by day of week', 'Which check-in days bring the biggest stays.', daBars(order.map(d => ({ label: DA_DOW[d], value: dowN[d] ? dowR[d] / dowN[d] : 0, top: daShort(dowN[d] ? dowR[d] / dowN[d] : 0), tip: DA_DOW[d] + ': ' + daInr(dowN[d] ? dowR[d] / dowN[d] : 0) + ' average' })), { label: 'Average value by weekday', color: '#eb6834', fmt: daShort }));
+  const bk = [['<1.5k', 0, 1500], ['1.5k–2.5k', 1500, 2500], ['2.5k–4k', 2500, 4000], ['4k–7k', 4000, 7000], ['7k–12k', 7000, 12000], ['12k+', 12000, 1e12]];
+  const bkv = bk.map(r => { const L = B.filter(b => b.total >= r[1] && b.total < r[2]); return { label: r[0], n: L.length, rev: daSum(L, b => b.total) }; });
+  h += daCard('Bookings by value band', 'How many bookings fall in each invoice size.', daBars(bkv.map(r => ({ label: r.label, value: r.n, tip: r.label + ': ' + r.n + ' bookings, ' + daInr(r.rev) + ' (' + Math.round(r.rev / totRev * 100) + '% of revenue)' })), { label: 'Bookings by value', color: '#2a78d6' }));
+  h += daCard('Revenue by value band', 'Where the money comes from – a few big bookings often outweigh many small ones.', daBars(bkv.map(r => ({ label: r.label, value: r.rev, top: daShort(r.rev), tip: r.label + ': ' + daInr(r.rev) + ' (' + Math.round(r.rev / totRev * 100) + '%)' })), { label: 'Revenue by value', color: '#eb6834', fmt: daShort }));
+  h += '</div>';
+
+  /* Muhurtham */
+  const muh = {}; Object.keys(DA_MUH_2025).forEach(m => DA_MUH_2025[m].forEach(d => { muh['2025-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0')] = 1; }));
+  try{ Object.keys(MUHURTHAM_DATES || {}).forEach(k => { muh[k] = 1; }); }catch(e){}
+  const muhYears = years.filter(y => Object.keys(muh).filter(k => k.slice(0, 4) == y).length >= 20 && yr[y].n);
+  if(muhYears.length){
+    h += '<div class="da-sec">Muhurtham (wedding) dates</div><div class="da-secsub">A booking counts when check-in is the evening before, or the morning of, a muhurtham date. Shown only for years where the muhurtham calendar is complete (2025 uses a public calendar – please verify).</div><div class="da-cols">';
+    const nextDay = s => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + 1); return k(d); };
+    const mrows = muhYears.map(y => {
+      const L = B.filter(b => b.y === y), M = L.filter(b => muh[b.date] || muh[nextDay(b.date)]);
+      const dates = Object.keys(muh).filter(kk => kk.slice(0, 4) == y).sort();
+      const un = dates.filter(dt => !B.some(b => b.date === dt || b.date === (function(){ const d = new Date(dt + 'T00:00:00'); d.setDate(d.getDate() - 1); return k(d); })()));
+      return { y: y, n: M.length, rev: daSum(M, b => b.total), tn: L.length, tr: daSum(L, b => b.total), dates: dates.length, un: un };
+    });
+    const mb = []; mrows.forEach(r => { mb.push({ label: r.y + ' muh.', value: r.n, color: '#2a78d6', tip: r.y + ': ' + r.n + ' muhurtham bookings (' + Math.round(r.n / r.tn * 100) + '% of the year)' }); mb.push({ label: r.y + ' other', value: r.tn - r.n, color: '#c3c2b7', tip: r.y + ': ' + (r.tn - r.n) + ' other bookings' }); });
+    h += daCard('Muhurtham vs other bookings', 'Count of bookings.', daBars(mb, { label: 'Muhurtham vs other bookings' }));
+    const mr = []; mrows.forEach(r => { mr.push({ label: r.y + ' muh.', value: r.rev, top: daShort(r.rev), color: '#2a78d6', tip: r.y + ': ' + daInr(r.rev) + ' (' + Math.round(r.rev / r.tr * 100) + '% of the year)' }); mr.push({ label: r.y + ' other', value: r.tr - r.rev, top: daShort(r.tr - r.rev), color: '#c3c2b7', tip: r.y + ': ' + daInr(r.tr - r.rev) }); });
+    h += daCard('Muhurtham vs other revenue', 'Invoice totals.', daBars(mr, { label: 'Muhurtham vs other revenue', fmt: daShort }));
+    h += '</div><div class="da-card" style="margin-top:12px;"><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Year</th><th>Muhurtham dates</th><th>Dates with no booking</th><th>Muhurtham bookings</th><th>Revenue</th><th>Share of year</th></tr></thead><tbody>';
+    mrows.forEach(r => { h += '<tr><td>' + r.y + '</td><td>' + r.dates + '</td><td>' + r.un.length + '</td><td>' + r.n + '</td><td>' + daInr(r.rev) + '</td><td>' + Math.round(r.rev / r.tr * 100) + '%</td></tr>'; });
+    h += '</tbody></table></div>';
+    mrows.forEach(r => { if(r.un.length) h += '<details><summary>' + r.y + ': muhurtham dates with no booking (' + r.un.length + ')</summary><div class="sub" style="margin-top:6px;">' + r.un.map(dt => dt.slice(8) + ' ' + DA_MON[+dt.slice(5, 7) - 1]).join(', ') + '</div></details>'; });
+    h += '</div>';
+  }
+
+  /* Guests and properties */
+  h += '<div class="da-sec">Guests and properties</div><div class="da-cols">';
+  const byPhone = {}; B.forEach(b => { if(b.phone.length >= 10) byPhone[b.phone] = (byPhone[b.phone] || 0) + 1; });
+  const withPhone = daSum(Object.keys(byPhone), p => byPhone[p]), guests = Object.keys(byPhone).length, repeatG = Object.keys(byPhone).filter(p => byPhone[p] > 1).length;
+  const repeatB = daSum(Object.keys(byPhone).filter(p => byPhone[p] > 1), p => byPhone[p]);
+  if(withPhone){
+    const freq = [1, 2, 3, 4].map(n => ({ label: n < 4 ? (n === 1 ? '1 stay' : n + ' stays') : '4+ stays', value: Object.keys(byPhone).filter(p => n < 4 ? byPhone[p] === n : byPhone[p] >= 4).length }));
+    h += daCard('Repeat guests', guests + ' distinct guests (by phone); ' + repeatG + ' stayed more than once and made ' + Math.round(repeatB / withPhone * 100) + '% of bookings.', daBars(freq.map(f => ({ label: f.label, value: f.value, tip: f.value + ' guests with ' + f.label })), { label: 'Guests by number of stays', color: '#1baf7a' }));
+  }
+  const props = {}; B.forEach(b => { props[b.prop] = props[b.prop] || { n: 0, r: 0 }; props[b.prop].n++; props[b.prop].r += b.total; });
+  const pk = Object.keys(props);
+  if(pk.length > 1) h += daCard('Revenue by property', 'All years combined.', daBars(pk.map(p => ({ label: p.replace(/^Ground Floor - /, ''), value: props[p].r, top: daShort(props[p].r), tip: p + ': ' + props[p].n + ' bookings, ' + daInr(props[p].r) })), { label: 'Revenue by property', color: '#2a78d6', fmt: daShort }));
+  h += '</div>';
+
+  h += '<div class="da-card" style="margin-top:12px;"><h4>Ten largest bookings</h4><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Check-in</th><th>Property</th><th>Amount</th></tr></thead><tbody>' + big.slice(0, 10).map(b => '<tr><td>' + b.date + '</td><td>' + b.prop + '</td><td>' + daInr(b.total) + '</td></tr>').join('') + '</tbody></table></div></div>';
+
+  /* Table view of monthly data */
+  h += '<details><summary>Show the monthly numbers as a table</summary><div class="da-card" style="margin-top:8px;"><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Month</th>' + lineYears.map(y => '<th>' + y + ' bookings</th><th>' + y + ' revenue</th>').join('') + '</tr></thead><tbody>'
+    + DA_MON.map((mn, m) => '<tr><td>' + mn + '</td>' + lineYears.map(y => '<td>' + yr[y].mn[m] + '</td><td>' + daInr(yr[y].mr[m]) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div></div></details>';
+  body.innerHTML = h;
+}
+
+/* ----- tooltips (hover on desktop, tap on phone) ----- */
+function daWire(){
+  if(daWired) return; daWired = true;
+  const root = document.getElementById('admin-da-view'), tip = document.getElementById('da-tip');
+  const show = (e) => {
+    const t = e.target.closest('[data-tip]'); if(!t){ tip.style.display = 'none'; return; }
+    tip.textContent = t.getAttribute('data-tip'); tip.style.display = 'block';
+    const x = Math.min(window.innerWidth - tip.offsetWidth - 8, Math.max(8, e.clientX + 12)), y = Math.max(8, e.clientY - tip.offsetHeight - 12);
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  };
+  root.addEventListener('mousemove', show); root.addEventListener('click', show);
+  root.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  document.getElementById('da-prop').addEventListener('change', daRender);
+  document.getElementById('da-back').addEventListener('click', () => {
+    tip.style.display = 'none';
+    document.getElementById('admin-da-view').style.display = 'none';
+    document.getElementById('admin-cal-view').style.display = 'block';
+    document.querySelector('#admin-overlay .cal-modal').classList.remove('wide');
+  });
+}
+document.getElementById('admin-da-btn').addEventListener('click', async () => {
+  daWire();
+  document.getElementById('admin-cal-view').style.display = 'none';
+  document.getElementById('admin-da-view').style.display = 'block';
+  document.querySelector('#admin-overlay .cal-modal').classList.add('wide');
+  const note = document.getElementById('da-note'), body = document.getElementById('da-body');
+  note.textContent = 'Loading booking data…'; body.innerHTML = '';
+  try{
+    daAll = await daLoad();
+    const props = []; daAll.forEach(b => { if(props.indexOf(b.prop) < 0) props.push(b.prop); }); props.sort();
+    const sel = document.getElementById('da-prop'), prev = sel.value;
+    sel.innerHTML = '<option value="__all">All properties</option>' + props.map(p => '<option value="' + p.replace(/"/g, '&quot;') + '">' + p + '</option>').join('');
+    if(prev && (prev === '__all' || props.indexOf(prev) >= 0)) sel.value = prev;
+    daRender();
+  }catch(e){
+    console.error(e); note.textContent = 'Could not load the booking data. Check your connection and try again.';
+  }
+});
+
 document.getElementById('gn-pl-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-pl-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
