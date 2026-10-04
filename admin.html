@@ -2366,7 +2366,8 @@ async function fetchRentUnitsData(mk, opts){
           ebAmount: startEbAmount,
           ebDueAmount: startEbAmount // due in full until "Mark EB bill as paid" is clicked
         };
-        try{ await db.collection('genga_nilayam').doc(unit.id).set({ ['months.' + mk]: md }, { merge: true }); }catch(e){}
+        // .update(), not .set merge - see the note in wireRentCards about dotted keys.
+        try{ await db.collection('genga_nilayam').doc(unit.id).update({ ['months.' + mk]: md }); }catch(e){}
       } else {
         md = { rentAmount: 0, rentDueAmount: 0, ebAmount: 0, ebDueAmount: 0 };
       }
@@ -2521,7 +2522,16 @@ function wireRentCards(){
         rentClearError();
         rentSetStatus('Tapped "Update changes" for ' + field + ' - sending to Firestore…');
         try{
-          await db.collection('genga_nilayam').doc(id).set(update, { merge: true });
+          // IMPORTANT: a dotted key like 'months.2026-10.rentAmount' is only treated as a
+          // nested field path by .update() - .set(data, {merge:true}) treats it as one
+          // literal field name containing dots, which silently writes to the wrong place.
+          // Plain top-level fields (tenantName, phone, agreementEnd, advancePaid) have no
+          // dots, so merge-set is fine and still creates the doc if it somehow didn't exist.
+          if(isMonthField){
+            await db.collection('genga_nilayam').doc(id).update(update);
+          } else {
+            await db.collection('genga_nilayam').doc(id).set(update, { merge: true });
+          }
           rentSetStatus('Saved ' + field + ' successfully.');
           if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
             await loadRentTenants(); // refresh totals / expiry / paid badges
@@ -2545,7 +2555,8 @@ function wireRentCards(){
         rentClearError();
         rentSetStatus('Tapped "Mark rent as paid" - sending to Firestore…');
         try{
-          await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.rentDueAmount']: 0 }, { merge: true });
+          // .update() (not .set merge) so the dotted path actually nests into months.<mk>.
+          await db.collection('genga_nilayam').doc(id).update({ ['months.' + rentViewMonthKey + '.rentDueAmount']: 0 });
           rentSetStatus('Rent marked as paid successfully.');
           await loadRentTenants();
         }catch(e){
@@ -2563,7 +2574,8 @@ function wireRentCards(){
         rentClearError();
         rentSetStatus('Tapped "Mark EB bill as paid" - sending to Firestore…');
         try{
-          await db.collection('genga_nilayam').doc(id).set({ ['months.' + rentViewMonthKey + '.ebDueAmount']: 0 }, { merge: true });
+          // .update() (not .set merge) so the dotted path actually nests into months.<mk>.
+          await db.collection('genga_nilayam').doc(id).update({ ['months.' + rentViewMonthKey + '.ebDueAmount']: 0 });
           rentSetStatus('EB bill marked as paid successfully.');
           await loadRentTenants();
         }catch(e){
