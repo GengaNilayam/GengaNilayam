@@ -662,9 +662,14 @@
   // load, no personal data, and never blocks or slows down the page.
   (function(){
     const dayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, UTC is fine for a rough count
+    // NOTE: byDate must be a real nested object here, not a dotted-string key
+    // like 'byDate.' + dayKey - with .set(merge:true), a dotted STRING key is
+    // written as one literal field named "byDate.2026-10-04" rather than
+    // nested under byDate, so Today/Last-7-days in the admin dashboard would
+    // silently always read 0 even though total keeps incrementing correctly.
     db.collection('genga_nilayam').doc('site_visits').set({
       total: firebase.firestore.FieldValue.increment(1),
-      ['byDate.' + dayKey]: firebase.firestore.FieldValue.increment(1),
+      byDate: { [dayKey]: firebase.firestore.FieldValue.increment(1) },
       lastVisit: new Date().toISOString()
     }, { merge: true }).catch(function(){ /* never let a tracking failure affect the guest */ });
   })();
