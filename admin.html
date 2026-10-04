@@ -468,11 +468,6 @@
 
       <div id="rent-error-banner" style="display:none;background:#fde2e1;color:#b3261e;border:1px solid #f3b4b0;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
 
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;background:#eef6f5;border:1px solid #cfe7e4;border-radius:10px;padding:8px 12px;">
-        <span id="rent-status-line" style="font-size:12px;color:#0f766e;font-weight:600;">Ready.</span>
-        <button type="button" id="rent-test-tap-btn" class="btn" style="padding:5px 10px;font-size:11px;background:#fff;color:#0f766e;border:1px solid #0f766e;margin-left:auto;">Test tap (no save)</button>
-      </div>
-
       <div id="admin-rent-unit-buttons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
 
       <div id="admin-rent-list" style="display:flex;flex-direction:column;gap:14px;"></div>
@@ -2214,17 +2209,6 @@ function rentClearError(){
   el.textContent = '';
 }
 
-/** Live one-line status for every step of a save, so a tap that does
-    nothing visible (handler never fired), a tap that hangs forever
-    (network can't reach Firestore), and a tap that fails fast (a rule
-    rejects it) can all be told apart without opening devtools. */
-function rentSetStatus(message){
-  const el = document.getElementById('rent-status-line');
-  if(!el) return;
-  const time = new Date().toLocaleTimeString('en-IN', { hour12: false });
-  el.textContent = '[' + time + '] ' + message;
-}
-
 /** Rent/EB paid-vs-due status badge - this is what makes the Rent Tracker
     read as a report, not just an edit form. */
 function rentPaidBadge(md){
@@ -2516,11 +2500,15 @@ function wireRentCards(){
         const update = isMonthField
           ? { ['months.' + rentViewMonthKey + '.' + field]: value }
           : { [field]: value };
+        if(field === 'ebAmount'){
+          // A new EB bill amount means a new bill has come in - due in full
+          // until "Mark EB bill as paid" is clicked.
+          update['months.' + rentViewMonthKey + '.ebDueAmount'] = value;
+        }
         const original = btn.textContent;
         btn.disabled = true;
         btn.textContent = 'Saving…';
         rentClearError();
-        rentSetStatus('Tapped "Update changes" for ' + field + ' - sending to Firestore…');
         try{
           // IMPORTANT: a dotted key like 'months.2026-10.rentAmount' is only treated as a
           // nested field path by .update() - .set(data, {merge:true}) treats it as one
@@ -2532,8 +2520,7 @@ function wireRentCards(){
           } else {
             await db.collection('genga_nilayam').doc(id).set(update, { merge: true });
           }
-          rentSetStatus('Saved ' + field + ' successfully.');
-          if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
+          if(field === 'rentAmount' || field === 'rentDueAmount' || field === 'ebAmount' || field === 'ebDueAmount' || field === 'agreementEnd'){
             await loadRentTenants(); // refresh totals / expiry / paid badges
           } else {
             btn.textContent = 'Saved';
@@ -2542,7 +2529,6 @@ function wireRentCards(){
         }catch(e){
           console.error('Rent Tracker: could not save ' + field, e);
           rentShowError('Could not save ' + field + ': ' + (e && e.message ? e.message : e));
-          rentSetStatus('FAILED to save ' + field + ': ' + (e && e.message ? e.message : e));
           btn.textContent = original;
           btn.disabled = false;
         }
@@ -2553,16 +2539,13 @@ function wireRentCards(){
       markRentBtn.addEventListener('click', async () => {
         markRentBtn.disabled = true;
         rentClearError();
-        rentSetStatus('Tapped "Mark rent as paid" - sending to Firestore…');
         try{
           // .update() (not .set merge) so the dotted path actually nests into months.<mk>.
           await db.collection('genga_nilayam').doc(id).update({ ['months.' + rentViewMonthKey + '.rentDueAmount']: 0 });
-          rentSetStatus('Rent marked as paid successfully.');
           await loadRentTenants();
         }catch(e){
           console.error('Rent Tracker: could not mark rent as paid', e);
           rentShowError('Could not mark rent as paid: ' + (e && e.message ? e.message : e));
-          rentSetStatus('FAILED to mark rent as paid: ' + (e && e.message ? e.message : e));
           markRentBtn.disabled = false;
         }
       });
@@ -2572,16 +2555,13 @@ function wireRentCards(){
       markEbBtn.addEventListener('click', async () => {
         markEbBtn.disabled = true;
         rentClearError();
-        rentSetStatus('Tapped "Mark EB bill as paid" - sending to Firestore…');
         try{
           // .update() (not .set merge) so the dotted path actually nests into months.<mk>.
           await db.collection('genga_nilayam').doc(id).update({ ['months.' + rentViewMonthKey + '.ebDueAmount']: 0 });
-          rentSetStatus('EB bill marked as paid successfully.');
           await loadRentTenants();
         }catch(e){
           console.error('Rent Tracker: could not mark EB bill as paid', e);
           rentShowError('Could not mark EB bill as paid: ' + (e && e.message ? e.message : e));
-          rentSetStatus('FAILED to mark EB bill as paid: ' + (e && e.message ? e.message : e));
           markEbBtn.disabled = false;
         }
       });
@@ -2598,13 +2578,6 @@ document.getElementById('admin-rent-btn').addEventListener('click', async ()=>{
   resetRangeUi('rent');
   populateMonthYearSelects('rent-month-select', 'rent-year-select');
   await loadRentTenants({ mode: 'month' });
-});
-document.getElementById('rent-test-tap-btn').addEventListener('click', ()=>{
-  // Pure DOM update, no Firestore involved at all - if this doesn't change the
-  // status line when tapped, taps aren't reaching the page's JavaScript (e.g.
-  // an in-app file preview that doesn't run scripts), which is a different
-  // problem from a Firestore save failing.
-  rentSetStatus('Test tap worked - taps ARE reaching this page.');
 });
 document.getElementById('rent-month-select').addEventListener('change', ()=> loadRentTenants({ mode: 'month' }));
 document.getElementById('rent-year-select').addEventListener('change', ()=> loadRentTenants({ mode: 'month' }));
