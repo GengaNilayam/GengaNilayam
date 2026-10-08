@@ -307,9 +307,18 @@
           <button class="btn btn-primary" id="admin-pin-submit" style="padding:10px 16px;">Continue</button>
         </div>
       </div>
+      <div id="admin-pin-report" style="margin-top:22px;border-top:1px solid var(--line);padding-top:16px;">
+        <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:4px;">Check-in report &ndash; upcoming check-ins</div>
+        <div class="cal-hint" style="margin-bottom:8px;">Guest names, phone numbers and amounts appear after you enter the PIN.</div>
+        <div id="admin-pin-report-list" style="display:flex;flex-direction:column;gap:8px;max-height:45vh;overflow-y:auto;"><div class="cal-hint">Loading&hellip;</div></div>
+      </div>
     </div>
     <div id="admin-cal-view" style="display:none;">
-      <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate Homestay Check-in report</button>
+      <div id="admin-checkin-report-section" style="margin-bottom:18px;">
+        <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Check-in report &ndash; all upcoming check-ins</div>
+        <div id="admin-checkin-report-list" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;"></div>
+      </div>
+      <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Check-in report by date range</button>
       <button type="button" class="btn btn-primary" id="admin-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate Homestay Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-quick-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Quick Invoice</button>
       <button type="button" class="btn btn-primary" id="admin-ebsplit-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">EB split for commercial spaces</button>
@@ -1103,7 +1112,10 @@ function renderCalendarGrid(gridEl, titleEl, year, month, opts, blockedSet){
   const today = todayKey();
   for(let d=1; d<=daysInMonth; d++){
     const key = toKey(year, month, d);
-    const isPast = key < today;
+    // allowAll (Quick Invoice): past dates and already-booked dates stay
+    // pickable - an invoice can be made for a past stay, or a second invoice
+    // for a date that already has one. Booked days are only shaded.
+    const isPast = !opts.allowAll && key < today;
     const isBlocked = bSet.has(key);
     let cls = 'cal-day';
     if(isPast) cls += ' past';
@@ -1120,8 +1132,9 @@ function renderCalendarGrid(gridEl, titleEl, year, month, opts, blockedSet){
                 : muhurtham === 'theipirai' ? ' style="box-shadow:inset 0 0 0 3px #facc15;"'
                 : '';
 
-    const clickable = !isPast && !isBlocked;
-    html += `<button type="button" class="${cls}" data-key="${key}"${style} ${clickable?'':'disabled'}>${d}</button>`;
+    const clickable = opts.allowAll || (!isPast && !isBlocked);
+    const tip = (opts.allowAll && isBlocked) ? ' title="Already booked - you can still pick it for another invoice"' : '';
+    html += `<button type="button" class="${cls}" data-key="${key}"${style}${tip} ${clickable?'':'disabled'}>${d}</button>`;
   }
   gridEl.innerHTML = html;
 }
@@ -1157,7 +1170,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   renderAdminCalendar();
   await loadPendingRequests();
   await loadSiteVisits();
-  await loadTodayCheckins();
+  await loadFirstPageReport(); await loadTodayCheckins();
   await loadNextCheckins();
   await checkMainPageRentBadge();
 });
@@ -1289,6 +1302,20 @@ async function blockOneProperty(propKey, req){
   return dates;
 }
 
+/* Invoice numbers are GN-YYYYMMDD-NNN. With several invoices on one day a random
+   3-digit suffix could repeat, so check it against the records first. */
+async function makeInvoiceNo(){
+  const base = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-';
+  for(let i = 0; i < 8; i++){
+    const cand = base + Math.floor(100 + Math.random()*900);
+    try{
+      const snap = await db.collection('genga_nilayam').where('invoiceNo', '==', cand).limit(1).get();
+      if(snap.empty) return cand;
+    }catch(e){ return cand; }
+  }
+  return base + String(Date.now()).slice(-6);
+}
+
 async function blockDatesForRequest(req){
   try{
     // A 'both homes' request blocks both calendars; a single-property
@@ -1301,7 +1328,40 @@ async function blockDatesForRequest(req){
   }catch(e){ /* non-fatal: invoice still goes out even if this fails */ }
 }
 
-async function unblockOneProperty(propKey, req){
+/* The nights a confirmed booking holds on its calendar (same rules as blockOneProperty). */
+function heldDatesOf(r){
+  const out = new Set();
+  const end = new Date(r.checkout+'T00:00:00');
+  let d = new Date(r.checkin+'T00:00:00');
+  if(r.checkin === r.checkout) out.add(r.checkin);
+  while(d < end){ out.add(toKey(d.getFullYear(), d.getMonth(), d.getDate())); d.setDate(d.getDate()+1); }
+  if(r.checkinTime && r.checkinTime < "10:30"){
+    const pd = new Date(r.checkin+'T00:00:00'); pd.setDate(pd.getDate()-1);
+    out.add(toKey(pd.getFullYear(), pd.getMonth(), pd.getDate()));
+  }
+  if(r.checkoutTime && r.checkoutTime > "10:30") out.add(toKey(end.getFullYear(), end.getMonth(), end.getDate()));
+  return out;
+}
+
+/* Dates for property p still held by OTHER confirmed, advance-paid bookings. Several
+   invoices can now share a date, so cancelling/moving one must not free a date that
+   another booking still needs. */
+async function datesHeldByOthers(p, req){
+  const held = new Set();
+  const snap = await db.collection('genga_nilayam').get();
+  snap.forEach(doc=>{
+    const r = doc.data();
+    if(!doc.id.startsWith('request_') || r.status !== 'invoiced' || !(Number(r.advance) > 0) || !r.checkin || !r.checkout) return;
+    if(r.property !== p && r.property !== 'both') return;
+    const self = doc.id === req.id || (req.invoiceNo && r.invoiceNo === req.invoiceNo)
+      || (!req.id && !req.invoiceNo && r.name === req.name && r.checkin === req.checkin && r.checkout === req.checkout);
+    if(self) return;
+    heldDatesOf(r).forEach(d => held.add(d));
+  });
+  return held;
+}
+
+async function unblockOneProperty(propKey, req, p){
   const doc = await db.collection('genga_nilayam').doc(propKey).get();
   const dates = new Set(doc.exists && doc.data().dates ? doc.data().dates : []);
   let d = new Date(req.checkin+'T00:00:00');
@@ -1323,6 +1383,9 @@ async function unblockOneProperty(propKey, req){
   if(req.checkoutTime && req.checkoutTime > "10:30"){
     dates.delete(toKey(end.getFullYear(), end.getMonth(), end.getDate()));
   }
+  if(p){
+    try{ (await datesHeldByOthers(p, req)).forEach(d => dates.add(d)); }catch(e){ /* keep going: worst case the date is freed, as before */ }
+  }
   await db.collection('genga_nilayam').doc(propKey).set({ dates: [...dates] });
   return dates;
 }
@@ -1331,7 +1394,7 @@ async function unblockDatesForRequest(req){
   try{
     const props = req.property === 'both' ? ['home1', 'home2'] : [req.property];
     for(const p of props){
-      blockedByProp[p] = await unblockOneProperty(PROPERTIES[p].blockedKey, req);
+      blockedByProp[p] = await unblockOneProperty(PROPERTIES[p].blockedKey, req, p);
     }
     renderAdminCalendar();
   }catch(e){ /* non-fatal */ }
@@ -1360,7 +1423,7 @@ function cancelBooking(r, e){
   }
 
   unblockDatesForRequest(r);
-  db.collection('genga_nilayam').doc(r.id).update({ status: 'cancelled' }).then(generateReport).catch(()=>{
+  db.collection('genga_nilayam').doc(r.id).update({ status: 'cancelled' }).then(refreshReports).catch(()=>{
     alert('Could not update the booking status. Please try again.');
   });
 }
@@ -1575,7 +1638,7 @@ document.getElementById('inv-back').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadPendingRequests();
   await loadSiteVisits();
-  await loadTodayCheckins();
+  await loadFirstPageReport(); await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -1597,7 +1660,7 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
     return;
   }
 
-  const invoiceNo = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900);
+  const invoiceNo = await makeInvoiceNo();
   const issuedDate = fmtDate(todayKey());
   const paymentAmount = computePaymentAmount(total, currentInvoiceReq ? currentInvoiceReq.checkin : null);
   const upiLink = buildUpiLink(paymentAmount, 'Genga Nilayam ' + invoiceNo);
@@ -2023,6 +2086,148 @@ function regenerateInvoicePDF(r, e){
 let reportViewMode = 'upcoming';
 let reportViewFrom = null, reportViewTo = null;
 
+/* Draws a list of bookings with all their action links into listEl. Used by the
+   full report view and by the check-in report shown on the first page, so
+   both behave identically. Each list looks items up in its own array. */
+function renderReportList(listEl, all){
+  currentReportItems = all;
+  listEl.innerHTML = all.map(r => `
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+      <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDateReport(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''}</div>
+      <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</div>
+      <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
+      ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
+      <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
+        ${r.status === 'invoiced' ? `<button type="button" class="report-checkin-date-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-in date</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-checkin-time-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-in time</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-date-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out date</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-time-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out time</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-phone-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update phone number</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-guests-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update No. of guests</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-bill-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
+        ${r.status === 'invoiced' && (r.balance != null ? Number(r.balance) : Number(r.total)||0) > 0 ? `<button type="button" class="report-markpaid-btn" data-req-id="${r.id}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Mark as paid</button>` : ''}
+        ${r.status === 'invoiced' ? `<a href="#" class="report-regen-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Regenerate invoice</a>` : ''}
+        ${r.status === 'invoiced' ? `<a href="#" class="report-cancel-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Cancel booking</a>` : ''}
+        ${normalizePhone(r.phone || '') ? `<a href="https://api.whatsapp.com/send?phone=${normalizePhone(r.phone || '')}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a>` : ''}
+        <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
+      </div>
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.report-checkin-date-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) promptUpdateCheckinDate(item.id, item, refreshReports);
+    });
+  });
+  listEl.querySelectorAll('.report-checkin-time-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) promptUpdateCheckinTime(item.id, item, refreshReports);
+    });
+  });
+  listEl.querySelectorAll('.report-checkout-date-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) promptUpdateCheckoutDate(item.id, item, refreshReports);
+    });
+  });
+  listEl.querySelectorAll('.report-checkout-time-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) promptUpdateCheckoutTime(item.id, item, refreshReports);
+    });
+  });
+  listEl.querySelectorAll('.report-phone-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) promptUpdatePhone(item.id, item, refreshReports);
+    });
+  });
+  listEl.querySelectorAll('.report-guests-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) promptUpdateGuests(item.id, item, refreshReports);
+    });
+  });
+  listEl.querySelectorAll('.report-cancel-btn').forEach(btn=>{
+    btn.addEventListener('click', function(e){
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) cancelBooking(item, e);
+      else e.preventDefault();
+    });
+  });
+  listEl.querySelectorAll('.report-regen-btn').forEach(btn=>{
+    btn.addEventListener('click', function(e){
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) regenerateInvoicePDF(item, e);
+      else e.preventDefault();
+    });
+  });
+  listEl.querySelectorAll('.report-bill-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> promptUpdateBillAmount(
+      btn.getAttribute('data-req-id'),
+      Number(btn.getAttribute('data-total')),
+      Number(btn.getAttribute('data-advance')),
+      refreshReports
+    ));
+  });
+  listEl.querySelectorAll('.report-advance-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> promptUpdateAdvance(
+      btn.getAttribute('data-req-id'),
+      Number(btn.getAttribute('data-advance')),
+      Number(btn.getAttribute('data-total')),
+      refreshReports
+    ));
+  });
+  listEl.querySelectorAll('.report-markpaid-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> promptMarkAsPaid(
+      btn.getAttribute('data-req-id'),
+      Number(btn.getAttribute('data-total')),
+      refreshReports
+    ));
+  });
+  listEl.querySelectorAll('.report-delete-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Permanently delete this booking record? This cannot be undone.')) return;
+      try{
+        await db.collection('genga_nilayam').doc(btn.getAttribute('data-req-id')).delete();
+        await refreshReports();
+      }catch(e){ alert('Could not delete. Please try again.'); }
+    });
+  });
+}
+
+/** Refreshes every place that lists check-ins (report view, first-page report, today/next). */
+async function refreshReports(){
+  try{ await generateReport(); }catch(e){}
+  try{ await loadFirstPageReport(); }catch(e){}
+  try{ await loadTodayCheckins(); await loadNextCheckins(); }catch(e){}
+}
+
+/** First-page check-in report: every upcoming booking (today onwards), newest actions inline. */
+async function loadFirstPageReport(){
+  const listEl = document.getElementById('admin-checkin-report-list');
+  if(!listEl) return;
+  try{
+    const snap = await db.collection('genga_nilayam').get();
+    const today = todayKey();
+    const all = [];
+    snap.forEach(doc=>{
+      const data = doc.data();
+      if(!doc.id.startsWith('request_') || !data.checkin || data.checkin < today) return;
+      if(data.status !== 'invoiced') return;   // confirmed bookings only; pending ones have their own section
+      all.push({ id: doc.id, ...data });
+    });
+    all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
+    if(all.length === 0){ listEl.innerHTML = '<div class="cal-hint">No upcoming check-ins.</div>'; return; }
+    renderReportList(listEl, all);
+  }catch(e){
+    listEl.innerHTML = '<div class="cal-hint">Could not load the check-in report.</div>';
+  }
+}
+
 async function generateReport(opts){
   if(opts && opts.mode === 'range'){
     reportViewMode = 'range';
@@ -2061,112 +2266,7 @@ async function generateReport(opts){
       listEl.innerHTML = reportViewMode === 'range' ? '<div class="cal-hint">No check-ins in this range.</div>' : '<div class="cal-hint">No upcoming check-ins.</div>';
       return;
     }
-    listEl.innerHTML = all.map(r => `
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
-        <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDateReport(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
-        <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</div>
-        <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
-        ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
-        <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
-          ${r.status === 'invoiced' ? `<button type="button" class="report-checkin-date-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-in date</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-checkin-time-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-in time</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-date-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out date</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-time-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out time</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-phone-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update phone number</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-guests-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update No. of guests</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-bill-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>` : ''}
-          ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
-          ${r.status === 'invoiced' && (r.balance != null ? Number(r.balance) : Number(r.total)||0) > 0 ? `<button type="button" class="report-markpaid-btn" data-req-id="${r.id}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Mark as paid</button>` : ''}
-          ${r.status === 'invoiced' ? `<a href="#" class="report-regen-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Regenerate invoice</a>` : ''}
-          ${r.status === 'invoiced' ? `<a href="#" class="report-cancel-btn" data-req-id="${r.id}" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Cancel booking</a>` : ''}
-          ${normalizePhone(r.phone || '') ? `<a href="https://api.whatsapp.com/send?phone=${normalizePhone(r.phone || '')}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a>` : ''}
-          <button type="button" class="report-delete-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove permanently</button>
-        </div>
-      </div>
-    `).join('');
-    listEl.querySelectorAll('.report-checkin-date-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) promptUpdateCheckinDate(item.id, item, generateReport);
-      });
-    });
-    listEl.querySelectorAll('.report-checkin-time-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) promptUpdateCheckinTime(item.id, item, generateReport);
-      });
-    });
-    listEl.querySelectorAll('.report-checkout-date-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) promptUpdateCheckoutDate(item.id, item, generateReport);
-      });
-    });
-    listEl.querySelectorAll('.report-checkout-time-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) promptUpdateCheckoutTime(item.id, item, generateReport);
-      });
-    });
-    listEl.querySelectorAll('.report-phone-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) promptUpdatePhone(item.id, item, generateReport);
-      });
-    });
-    listEl.querySelectorAll('.report-guests-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) promptUpdateGuests(item.id, item, generateReport);
-      });
-    });
-    listEl.querySelectorAll('.report-cancel-btn').forEach(btn=>{
-      btn.addEventListener('click', function(e){
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) cancelBooking(item, e);
-        else e.preventDefault();
-      });
-    });
-    listEl.querySelectorAll('.report-regen-btn').forEach(btn=>{
-      btn.addEventListener('click', function(e){
-        const item = currentReportItems.find(x => x.id === btn.getAttribute('data-req-id'));
-        if(item) regenerateInvoicePDF(item, e);
-        else e.preventDefault();
-      });
-    });
-    listEl.querySelectorAll('.report-bill-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> promptUpdateBillAmount(
-        btn.getAttribute('data-req-id'),
-        Number(btn.getAttribute('data-total')),
-        Number(btn.getAttribute('data-advance')),
-        generateReport
-      ));
-    });
-    listEl.querySelectorAll('.report-advance-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> promptUpdateAdvance(
-        btn.getAttribute('data-req-id'),
-        Number(btn.getAttribute('data-advance')),
-        Number(btn.getAttribute('data-total')),
-        generateReport
-      ));
-    });
-    listEl.querySelectorAll('.report-markpaid-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> promptMarkAsPaid(
-        btn.getAttribute('data-req-id'),
-        Number(btn.getAttribute('data-total')),
-        generateReport
-      ));
-    });
-    listEl.querySelectorAll('.report-delete-btn').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(!confirm('Permanently delete this booking record? This cannot be undone.')) return;
-        try{
-          await db.collection('genga_nilayam').doc(btn.getAttribute('data-req-id')).delete();
-          await generateReport();
-        }catch(e){ alert('Could not delete. Please try again.'); }
-      });
-    });
+    renderReportList(listEl, all);
   }catch(e){
     listEl.innerHTML = '<div class="cal-hint">Could not load report.</div>';
   }
@@ -2201,7 +2301,7 @@ document.getElementById('report-back').addEventListener('click', async ()=>{
   document.getElementById('admin-report-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadSiteVisits();
-  await loadTodayCheckins();
+  await loadFirstPageReport(); await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -2356,7 +2456,7 @@ document.getElementById('revenue-back').addEventListener('click', async ()=>{
   document.getElementById('admin-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadSiteVisits();
-  await loadTodayCheckins();
+  await loadFirstPageReport(); await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -3271,7 +3371,7 @@ wireRangeToggle('gnrev', generateGnRevenueReport);
 document.getElementById('gn-revenue-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
-  await loadSiteVisits(); await loadTodayCheckins(); await loadNextCheckins();
+  await loadSiteVisits(); await loadFirstPageReport(); await loadTodayCheckins(); await loadNextCheckins();
 });
 
 /* ---- GN Expenses ---- */
@@ -3380,7 +3480,7 @@ wireRangeToggle('gnexp', generateGnExpensesReport);
 document.getElementById('gn-expenses-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-expenses-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
-  await loadSiteVisits(); await loadTodayCheckins(); await loadNextCheckins();
+  await loadSiteVisits(); await loadFirstPageReport(); await loadTodayCheckins(); await loadNextCheckins();
 });
 
 /* ---- GN Profit / Loss report ---- */
@@ -3776,7 +3876,7 @@ document.getElementById('admin-da-btn').addEventListener('click', async () => {
 document.getElementById('gn-pl-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-pl-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
-  await loadSiteVisits(); await loadTodayCheckins(); await loadNextCheckins();
+  await loadSiteVisits(); await loadFirstPageReport(); await loadTodayCheckins(); await loadNextCheckins();
 });
 
 /* ---------- Quick Invoice: manual entry for bookings made outside the site ---------- */
@@ -3804,7 +3904,7 @@ document.getElementById('q-back').addEventListener('click', async ()=>{
   // disappears immediately, instead of waiting for a property-dropdown change.
   await loadPendingRequests();
   await loadSiteVisits();
-  await loadTodayCheckins();
+  await loadFirstPageReport(); await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -3994,7 +4094,7 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
   const checkinDisplay = fmtDate(checkinDate) + (checkinTime ? ' at ' + fmtTime(checkinTime) : '');
   const checkoutDisplay = fmtDate(checkoutDate) + (checkoutTime ? ' at ' + fmtTime(checkoutTime) : '');
 
-  const invoiceNo = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(100 + Math.random()*900);
+  const invoiceNo = await makeInvoiceNo();
   const issuedDate = fmtDate(todayKey());
   const paymentAmount = computePaymentAmount(total, checkinDate);
   const upiLink = buildUpiLink(paymentAmount, 'Genga Nilayam ' + invoiceNo);
@@ -4186,7 +4286,7 @@ async function openDatePicker(fieldId){
   const isBooking = QDP_BOOKING_FIELDS.has(fieldId);
   document.getElementById('qdp-legend').style.display = isBooking ? 'flex' : 'none';
   document.getElementById('qdp-hint').textContent = isBooking
-    ? 'Grey dates are already blocked; orange/yellow are muhurtham dates.'
+    ? 'Any date can be picked, including past dates. Grey dates already have a booking (you can still pick them for another invoice); orange/yellow are muhurtham dates.'
     : 'Tap a date to select it.';
 
   if(isBooking){
@@ -4206,7 +4306,7 @@ function renderDatePickerGrid(){
     // Full parity with the main booking calendar: past/blocked days
     // disabled, muhurtham highlighted - via the same renderCalendarGrid
     // used there, just scoped to this picker's own fetched blocked set.
-    renderCalendarGrid(gridEl, titleEl, qdpYear, qdpMonth, { selStart: selectedIso }, qdpBlockedDates);
+    renderCalendarGrid(gridEl, titleEl, qdpYear, qdpMonth, { selStart: selectedIso, allowAll: true }, qdpBlockedDates);
   }else{
     const first = new Date(qdpYear, qdpMonth, 1);
     const startDow = first.getDay();
@@ -4245,6 +4345,37 @@ document.querySelectorAll('.qdp-open-btn').forEach(btn => {
   btn.addEventListener('click', () => openDatePicker(btn.getAttribute('data-target')));
 });
 
+
+/* Upcoming check-ins shown on the PIN screen itself, before sign-in. Because
+   anyone who opens this page can see it, it carries only dates, property,
+   nights and guest count - no names, phone numbers or money. */
+async function loadPinScreenReport(){
+  const listEl = document.getElementById('admin-pin-report-list');
+  if(!listEl) return;
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  try{
+    const snap = await db.collection('genga_nilayam').get();
+    const today = todayKey();
+    const all = [];
+    snap.forEach(doc=>{
+      const d = doc.data();
+      if(!doc.id.startsWith('request_') || d.status !== 'invoiced' || !d.checkin || d.checkin < today) return;
+      all.push(d);
+    });
+    all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
+    if(!all.length){ listEl.innerHTML = '<div class="cal-hint">No upcoming check-ins.</div>'; return; }
+    listEl.innerHTML = all.map(r => {
+      const n = r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime);
+      return `<div style="border:1px solid var(--line);border-radius:10px;padding:9px 12px;">
+        <div style="font-weight:700;font-size:14px;">${esc(fmtDateReport(r.checkin))}${r.checkinTime ? ' at ' + esc(fmtTime(r.checkinTime)) : ''} &rarr; ${esc(fmtDateReport(r.checkout))}${r.checkoutTime ? ' at ' + esc(fmtTime(r.checkoutTime)) : ''}</div>
+        <div style="font-size:12.5px;color:var(--ink-soft);">${esc(r.propertyName || r.property || '')} &middot; ${esc(n || '?')} night${n === 1 ? '' : 's'} &middot; ${esc(r.guests || '?')} guests</div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    listEl.innerHTML = '<div class="cal-hint">Could not load check-ins.</div>';
+  }
+}
+loadPinScreenReport();
 </script>
 
 </body>
