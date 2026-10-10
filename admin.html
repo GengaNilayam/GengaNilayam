@@ -315,11 +315,7 @@
     </div>
     <div id="admin-cal-view" style="display:none;">
       <div id="admin-rating-reminder" style="display:none;"></div>
-      <div id="admin-checkin-report-section" style="margin-bottom:18px;">
-        <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Check-in report &ndash; all upcoming check-ins</div>
-        <div id="admin-checkin-report-list" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;"></div>
-      </div>
-      <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Check-in report by date range</button>
+      <button type="button" class="btn btn-primary" id="admin-report-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate Homestay Check-in report</button>
       <button type="button" class="btn btn-primary" id="admin-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate Homestay Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-quick-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Quick Invoice</button>
       <button type="button" class="btn btn-primary" id="admin-ebsplit-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">EB split for commercial spaces</button>
@@ -1171,7 +1167,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   renderAdminCalendar();
   await loadPendingRequests();
   await loadSiteVisits();
-  await loadFirstPageReport(); await loadTodayCheckins();
+  await loadTodayCheckins();
   await loadNextCheckins();
   await checkMainPageRentBadge();
   await loadRatingReminder();
@@ -1640,7 +1636,7 @@ document.getElementById('inv-back').addEventListener('click', async ()=>{
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadPendingRequests();
   await loadSiteVisits();
-  await loadFirstPageReport(); await loadTodayCheckins();
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -2088,9 +2084,7 @@ function regenerateInvoicePDF(r, e){
 let reportViewMode = 'upcoming';
 let reportViewFrom = null, reportViewTo = null;
 
-/* Draws a list of bookings with all their action links into listEl. Used by the
-   full report view and by the check-in report shown on the first page, so
-   both behave identically. Each list looks items up in its own array. */
+/* Draws a list of bookings with all their action links into listEl. */
 function renderReportList(listEl, all){
   currentReportItems = all;
   listEl.innerHTML = all.map(r => `
@@ -2201,33 +2195,10 @@ function renderReportList(listEl, all){
   });
 }
 
-/** Refreshes every place that lists check-ins (report view, first-page report, today/next). */
+/** Refreshes every place that lists check-ins (report view, today/next). */
 async function refreshReports(){
   try{ await generateReport(); }catch(e){}
-  try{ await loadFirstPageReport(); }catch(e){}
   try{ await loadTodayCheckins(); await loadNextCheckins(); }catch(e){}
-}
-
-/** First-page check-in report: every upcoming booking (today onwards), newest actions inline. */
-async function loadFirstPageReport(){
-  const listEl = document.getElementById('admin-checkin-report-list');
-  if(!listEl) return;
-  try{
-    const snap = await db.collection('genga_nilayam').get();
-    const today = todayKey();
-    const all = [];
-    snap.forEach(doc=>{
-      const data = doc.data();
-      if(!doc.id.startsWith('request_') || !data.checkin || data.checkin < today) return;
-      if(data.status !== 'invoiced') return;   // confirmed bookings only; pending ones have their own section
-      all.push({ id: doc.id, ...data });
-    });
-    all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
-    if(all.length === 0){ listEl.innerHTML = '<div class="cal-hint">No upcoming check-ins.</div>'; return; }
-    renderReportList(listEl, all);
-  }catch(e){
-    listEl.innerHTML = '<div class="cal-hint">Could not load the check-in report.</div>';
-  }
 }
 
 async function generateReport(opts){
@@ -2303,7 +2274,7 @@ document.getElementById('report-back').addEventListener('click', async ()=>{
   document.getElementById('admin-report-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadSiteVisits();
-  await loadFirstPageReport(); await loadTodayCheckins();
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -2458,7 +2429,7 @@ document.getElementById('revenue-back').addEventListener('click', async ()=>{
   document.getElementById('admin-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
   await loadSiteVisits();
-  await loadFirstPageReport(); await loadTodayCheckins();
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
@@ -3373,7 +3344,7 @@ wireRangeToggle('gnrev', generateGnRevenueReport);
 document.getElementById('gn-revenue-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-revenue-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
-  await loadSiteVisits(); await loadFirstPageReport(); await loadTodayCheckins(); await loadNextCheckins();
+  await loadSiteVisits(); await loadTodayCheckins(); await loadNextCheckins();
 });
 
 /* ---- GN Expenses ---- */
@@ -3482,7 +3453,7 @@ wireRangeToggle('gnexp', generateGnExpensesReport);
 document.getElementById('gn-expenses-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-expenses-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
-  await loadSiteVisits(); await loadFirstPageReport(); await loadTodayCheckins(); await loadNextCheckins();
+  await loadSiteVisits(); await loadTodayCheckins(); await loadNextCheckins();
 });
 
 /* ---- GN Profit / Loss report ---- */
@@ -3878,7 +3849,7 @@ document.getElementById('admin-da-btn').addEventListener('click', async () => {
 document.getElementById('gn-pl-back').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-pl-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
-  await loadSiteVisits(); await loadFirstPageReport(); await loadTodayCheckins(); await loadNextCheckins();
+  await loadSiteVisits(); await loadTodayCheckins(); await loadNextCheckins();
 });
 
 /* ---------- Quick Invoice: manual entry for bookings made outside the site ---------- */
@@ -3906,7 +3877,7 @@ document.getElementById('q-back').addEventListener('click', async ()=>{
   // disappears immediately, instead of waiting for a property-dropdown change.
   await loadPendingRequests();
   await loadSiteVisits();
-  await loadFirstPageReport(); await loadTodayCheckins();
+  await loadTodayCheckins();
   await loadNextCheckins();
 });
 
