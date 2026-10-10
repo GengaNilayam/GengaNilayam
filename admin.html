@@ -314,6 +314,7 @@
       </div>
     </div>
     <div id="admin-cal-view" style="display:none;">
+      <div id="admin-rating-reminder" style="display:none;"></div>
       <div id="admin-checkin-report-section" style="margin-bottom:18px;">
         <div class="cal-title" style="text-align:left;font-size:14px;margin-bottom:8px;">Check-in report &ndash; all upcoming check-ins</div>
         <div id="admin-checkin-report-list" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;"></div>
@@ -1173,6 +1174,7 @@ document.getElementById('admin-pin-submit').addEventListener('click', async ()=>
   await loadFirstPageReport(); await loadTodayCheckins();
   await loadNextCheckins();
   await checkMainPageRentBadge();
+  await loadRatingReminder();
 });
 document.getElementById('admin-cal-prev').addEventListener('click', ()=>{
   adminViewMonth--; if(adminViewMonth<0){ adminViewMonth=11; adminViewYear--; } renderAdminCalendar();
@@ -4376,6 +4378,56 @@ async function loadPinScreenReport(){
   }
 }
 loadPinScreenReport();
+
+/* ---------- Quarterly reminder: refresh the Google rating on the guest page ----------
+   The rating on the guest page is written into index.html, so it needs a manual
+   refresh. This keeps the date it was last done in Firestore (doc 'rating_reminder'),
+   so the reminder is the same on every phone/computer. Shown when 3 months have
+   passed; "Remind me in a week" snoozes it. */
+function addMonthsIso(iso, n){
+  const [y, m, d] = iso.split('-').map(Number);
+  const t = new Date(y, m - 1 + n, d);
+  return toKey(t.getFullYear(), t.getMonth(), t.getDate());
+}
+async function loadRatingReminder(){
+  const box = document.getElementById('admin-rating-reminder');
+  if(!box) return;
+  try{
+    const ref = db.collection('genga_nilayam').doc('rating_reminder');
+    const doc = await ref.get();
+    const today = todayKey();
+    const d = doc.exists ? doc.data() : {};
+    if(!d.lastUpdated){
+      // first run: the rating was just refreshed, so start the 3-month clock today
+      await ref.set({ lastUpdated: today }, { merge: true });
+      d.lastUpdated = today;
+    }
+    const due = addMonthsIso(d.lastUpdated, 3);
+    const snoozed = d.snoozeUntil && today < d.snoozeUntil;
+    if(today >= due && !snoozed){
+      box.style.display = 'block';
+      box.innerHTML = `<div style="background:#fff6e0;border:1px solid #f0d58a;border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px;">Time to refresh the Google rating</div>
+        <div style="font-size:13px;color:var(--ink-soft);margin-bottom:10px;">The rating and review count on the guest page were last updated on ${fmtDate(d.lastUpdated)}. Check your Google listing and update the page (heading, description and link preview).</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" id="rating-reminder-done" style="padding:8px 14px;font-size:13px;">I've updated it</button>
+          <button type="button" class="btn" id="rating-reminder-snooze" style="padding:8px 14px;font-size:13px;background:#fff;color:var(--wood);border:2px solid var(--wood);">Remind me in a week</button>
+        </div></div>`;
+      document.getElementById('rating-reminder-done').addEventListener('click', async ()=>{
+        try{ await ref.set({ lastUpdated: todayKey(), snoozeUntil: '' }, { merge: true }); }catch(e){}
+        loadRatingReminder();
+      });
+      document.getElementById('rating-reminder-snooze').addEventListener('click', async ()=>{
+        const t = new Date(); t.setDate(t.getDate() + 7);
+        try{ await ref.set({ snoozeUntil: toKey(t.getFullYear(), t.getMonth(), t.getDate()) }, { merge: true }); }catch(e){}
+        loadRatingReminder();
+      });
+    } else {
+      box.style.display = 'block';
+      box.innerHTML = `<div class="cal-hint" style="margin-bottom:10px;">Google rating on the guest page last updated ${fmtDate(d.lastUpdated)}; next reminder ${fmtDate(due)}.</div>`;
+    }
+  }catch(e){ box.style.display = 'none'; }
+}
 </script>
 
 </body>
