@@ -604,7 +604,10 @@
         </div>
       </div>
       <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4:00 PM check-in → 4:00 PM check-out the next day).</div>
-      <div class="field"><label>Number of guests</label><input type="number" min="1" max="10" id="f-guests" value="2"></div>
+      <div class="field-row">
+        <div class="field"><label>No. of adults</label><input type="number" min="1" max="10" id="f-adults" value="2" inputmode="numeric"></div>
+        <div class="field"><label>No. of kids (below 7 yrs)</label><input type="number" min="0" max="10" id="f-kids" value="0" inputmode="numeric"></div>
+      </div>
       <div class="field"><label>Message (optional)</label><textarea id="f-message" placeholder="Anything else we should know?"></textarea></div>
       <a class="submit-btn" id="submit-btn" href="#" style="display:block;">Booking request for Home#1</a>
       <a class="submit-btn" id="submit-both-btn" href="#" style="display:block;margin-top:10px;">Booking request for Home#1 &amp; Home#2</a>
@@ -678,6 +681,29 @@
 const WHATSAPP_NUMBER = "917397585569";
 const DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
+function guestCounts(){
+  let a = parseInt(document.getElementById('f-adults').value, 10);
+  let k = parseInt(document.getElementById('f-kids').value, 10);
+  if(!(a >= 1)) a = 1;
+  if(!(k >= 0)) k = 0;
+  return { adults: a, kids: k, total: a + k };
+}
+function guestsText(g){
+  return g.total + ' (' + g.adults + (g.adults === 1 ? ' adult' : ' adults') + (g.kids ? ', ' + g.kids + (g.kids === 1 ? ' kid' : ' kids') + ' below 7 years' : '') + ')';
+}
+function clampGuestCounts(prop){
+  const aEl = document.getElementById('f-adults'), kEl = document.getElementById('f-kids');
+  if(!aEl || !kEl) return;
+  const max = (prop === 'both') ? 18 : ((PROPERTIES[prop] || {}).maxGuests || 10);
+  const kMax = Math.max(0, max - 1);
+  aEl.max = max; kEl.max = kMax;
+  let a = parseInt(aEl.value, 10), k = parseInt(kEl.value, 10);
+  if(!(a >= 1)) a = 1;
+  if(!(k >= 0)) k = 0;
+  if(a > max) a = max;
+  if(a + k > max) k = max - a;
+  aEl.value = a; kEl.value = k;
+}
 const PROPERTIES = {
   home1: { name: "Ground Floor - Home#1", maxGuests: 10, blockedKey: 'blocked_dates_home1' },
   home2: { name: "Ground Floor - Home#2", maxGuests: 8, blockedKey: 'blocked_dates_home2' }
@@ -696,11 +722,7 @@ document.querySelectorAll('.prop-tab').forEach(tab => {
     currentProperty = prop;
     document.querySelectorAll('.prop-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-prop') === prop));
     document.querySelectorAll('.prop-panel').forEach(p => p.classList.toggle('active', p.getAttribute('data-prop') === prop));
-    const guestsInput = document.getElementById('f-guests');
-    if(guestsInput){
-      guestsInput.max = PROPERTIES[prop].maxGuests;
-      if(Number(guestsInput.value) > PROPERTIES[prop].maxGuests) guestsInput.value = PROPERTIES[prop].maxGuests;
-    }
+    clampGuestCounts(prop);
     const bookingNote = document.getElementById('booking-property-note');
     if(bookingNote) bookingNote.textContent = "You're booking: " + PROPERTIES[prop].name;
     const submitBtn = document.getElementById('submit-btn');
@@ -1159,7 +1181,9 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   const checkout = document.getElementById('f-checkout').value;
   const checkinRaw = readTime12('f-checkin-hh','f-checkin-mm','f-checkin-ampm');
   const checkoutRaw = readTime12('f-checkout-hh','f-checkout-mm','f-checkout-ampm');
-  const guests = document.getElementById('f-guests').value;
+  clampGuestCounts(currentProperty);
+  const gc = guestCounts();
+  const guests = gc.total;
   const message = document.getElementById('f-message').value.trim();
 
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
@@ -1187,7 +1211,7 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Nights: ${nights}\n`;
-  text += `Guests: ${guests}\n`;
+  text += `Guests: ${guestsText(gc)}\n`;
   text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
   if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate} x ${nights} night${nights>1?'s':''} = Rs. ${peak.flatRate * nights}\n`;
   if(message) text += `Message: ${message}\n`;
@@ -1205,7 +1229,7 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   const reqId = 'request_' + Date.now();
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: currentProperty, propertyName: PROPERTIES[currentProperty].name,
-    checkin, checkout, checkinTime, checkoutTime, guests, message, nights,
+    checkin, checkout, checkinTime, checkoutTime, guests, adults: gc.adults, kids: gc.kids, message, nights,
     isMuhurtham: peak.isMuhurtham, muhurthamType: peak.isMuhurtham ? peak.type : null,
     flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate * nights : null,
     status: 'pending', submittedAt: new Date().toISOString()
@@ -1219,7 +1243,9 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   const checkout = document.getElementById('f-checkout').value;
   const checkinRaw = readTime12('f-checkin-hh','f-checkin-mm','f-checkin-ampm');
   const checkoutRaw = readTime12('f-checkout-hh','f-checkout-mm','f-checkout-ampm');
-  const guests = document.getElementById('f-guests').value;
+  clampGuestCounts('both');
+  const gc = guestCounts();
+  const guests = gc.total;
   const message = document.getElementById('f-message').value.trim();
   const bothName = 'Ground Floor - Home#1 & Home#2';
 
@@ -1248,7 +1274,7 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
   text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Nights: ${nights}\n`;
-  text += `Guests (total across both homes): ${guests}\n`;
+  text += `Guests (total across both homes): ${guestsText(gc)}\n`;
   text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
   if(peak.pricingApplies && peak.underMinimum) text += `High-demand flat rate applies: Rs. ${peak.flatRate} x ${nights} night${nights>1?'s':''} = Rs. ${peak.flatRate * nights}\n`;
   if(message) text += `Message: ${message}\n`;
@@ -1262,7 +1288,7 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   const reqId = 'request_' + Date.now();
   db.collection('genga_nilayam').doc(reqId).set({
     name, phone, property: 'both', propertyName: bothName,
-    checkin, checkout, checkinTime, checkoutTime, guests, message, nights,
+    checkin, checkout, checkinTime, checkoutTime, guests, adults: gc.adults, kids: gc.kids, message, nights,
     isMuhurtham: peak.isMuhurtham, muhurthamType: peak.isMuhurtham ? peak.type : null,
     flatRateApplied: (peak.pricingApplies && peak.underMinimum) ? peak.flatRate * nights : null,
     status: 'pending', submittedAt: new Date().toISOString()

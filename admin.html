@@ -1302,6 +1302,20 @@ async function blockOneProperty(propKey, req){
 
 /* Invoice numbers are GN-YYYYMMDD-NNN. With several invoices on one day a random
    3-digit suffix could repeat, so check it against the records first. */
+/* A past check-in stays listed until the guest has paid in full (balance 0). */
+function hasDue(r){
+  if(r.status !== 'invoiced') return false;
+  const bal = r.balance != null ? Number(r.balance) : (Number(r.total) || 0) - (Number(r.advance) || 0);
+  return bal > 0;
+}
+function guestBreak(r, plain){
+  const t = r.guests || '?';
+  let extra = '';
+  if(r.adults != null && r.kids != null){
+    extra = ' (' + r.adults + ' adult' + (Number(r.adults) === 1 ? '' : 's') + (Number(r.kids) ? ', ' + r.kids + ' kid' + (Number(r.kids) === 1 ? '' : 's') + ' below 7' : '') + ')';
+  }
+  return plain ? (t + extra) : (t + ' guests' + extra);
+}
 async function makeInvoiceNo(){
   const base = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-';
   for(let i = 0; i < 8; i++){
@@ -1434,7 +1448,7 @@ function checkinCardHtml(r){
   return `
   <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
     <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''}</div>
-    <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.guests || '?'} guests</div>
+    <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${guestBreak(r)}</div>
     <div style="font-size:12px;color:var(--ink-soft);">${r.phone || ''}</div>
     ${guestNumber ? `<div style="margin-top:8px;"><a href="https://api.whatsapp.com/send?phone=${guestNumber}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a></div>` : ''}
   </div>`;
@@ -1550,7 +1564,7 @@ async function loadPendingRequests(){
     listEl.innerHTML = requests.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDateReport(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${guestBreak(r)}</div>
         <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
         <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;">
           <button type="button" class="btn btn-primary admin-invoice-btn" data-req-id="${r.id}" style="padding:8px 14px;font-size:13px;">Create Invoice</button>
@@ -2002,7 +2016,7 @@ function regenerateInvoicePDF(r, e){
     doc.text('Property:', 14, y); doc.text(String(propertyName), 70, y); y += 8;
     doc.text('Check-in:', 14, y); doc.text(String(checkinDisplay), 70, y); y += 8;
     doc.text('Check-out:', 14, y); doc.text(String(checkoutDisplay), 70, y); y += 8;
-    doc.text('Guests:', 14, y); doc.text(String(r.guests || '-'), 70, y); y += 8;
+    doc.text('Guests:', 14, y); doc.text(String(guestBreak(r, true).replace(/ guests?$/, '') || '-'), 70, y); y += 8;
     doc.text('Nights:', 14, y); doc.text(String(nights), 70, y); y += 8;
 
     y += 6;
@@ -2061,7 +2075,7 @@ function regenerateInvoicePDF(r, e){
     msg += `\nProperty: ${propertyName}\n`;
     msg += `Check-in: ${checkinDisplay}\n`;
     msg += `Check-out: ${checkoutDisplay}\n`;
-    if(r.guests) msg += `Guests: ${r.guests}\n`;
+    if(r.guests) msg += `Guests: ${guestBreak(r, true)}\n`;
     msg += `Nights: ${nights}\n`;
     msg += `\n*Total Amount: Rs. ${total}*\n`;
     if(advance > 0){
@@ -2090,7 +2104,7 @@ function renderReportList(listEl, all){
   listEl.innerHTML = all.map(r => `
     <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
       <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDateReport(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''}</div>
-      <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${r.guests || '?'} guests</div>
+      <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${guestBreak(r)}</div>
       <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</div>
       <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
       ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
@@ -2214,7 +2228,7 @@ async function generateReport(opts){
   const titleEl = document.getElementById('admin-report-title');
   titleEl.textContent = reportViewMode === 'range'
     ? `Check-ins ${fmtDate(reportViewFrom)} to ${fmtDate(reportViewTo)}`
-    : 'All future check-ins';
+    : 'All future check-ins (and past ones with balance due)';
 
   const listEl = document.getElementById('admin-report-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
@@ -2229,7 +2243,7 @@ async function generateReport(opts){
         if(!reportViewFrom || !reportViewTo) return;
         if(data.checkin < reportViewFrom || data.checkin > reportViewTo) return;
       } else {
-        if(data.checkin < today) return;
+        if(data.checkin < today && !hasDue(data)) return;
       }
       all.push({ id: doc.id, ...data });
     });
@@ -4332,7 +4346,7 @@ async function loadPinScreenReport(){
     const all = [];
     snap.forEach(doc=>{
       const d = doc.data();
-      if(!doc.id.startsWith('request_') || d.status !== 'invoiced' || !d.checkin || d.checkin < today) return;
+      if(!doc.id.startsWith('request_') || d.status !== 'invoiced' || !d.checkin || (d.checkin < today && !hasDue(d))) return;
       all.push(d);
     });
     all.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
@@ -4341,7 +4355,8 @@ async function loadPinScreenReport(){
       const n = r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime);
       return `<div style="border:1px solid var(--line);border-radius:10px;padding:9px 12px;">
         <div style="font-weight:700;font-size:14px;">${esc(fmtDateReport(r.checkin))}${r.checkinTime ? ' at ' + esc(fmtTime(r.checkinTime)) : ''} &rarr; ${esc(fmtDateReport(r.checkout))}${r.checkoutTime ? ' at ' + esc(fmtTime(r.checkoutTime)) : ''}</div>
-        <div style="font-size:12.5px;color:var(--ink-soft);">${esc(r.propertyName || r.property || '')} &middot; ${esc(n || '?')} night${n === 1 ? '' : 's'} &middot; ${esc(r.guests || '?')} guests</div>
+        <div style="font-size:12.5px;color:var(--ink-soft);">${esc(r.propertyName || r.property || '')} &middot; ${esc(n || '?')} night${n === 1 ? '' : 's'} &middot; ${esc(guestBreak(r))}</div>
+        ${r.checkin < today ? '<div style="font-size:12px;font-weight:700;color:#b3261e;margin-top:2px;">Past check-in &middot; payment pending</div>' : ''}
       </div>`;
     }).join('');
   }catch(e){
