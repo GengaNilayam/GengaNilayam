@@ -459,7 +459,7 @@
             <button type="button" class="qdp-open-btn" data-target="q-checkin-date" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
           </div>
         </div>
-        <div class="field"><label>Check-in time</label><input type="time" id="q-checkin-time" value="12:00"></div>
+        <div class="field"><label>Approx. check-in time</label><input type="time" id="q-checkin-time" value=""></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Check-out date</label>
@@ -468,7 +468,7 @@
             <button type="button" class="qdp-open-btn" data-target="q-checkout-date" aria-label="Pick a date" style="padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:16px;cursor:pointer;">&#128197;</button>
           </div>
         </div>
-        <div class="field"><label>Check-out time</label><input type="time" id="q-checkout-time" value="12:00"></div>
+        <div class="field"><label>Approx. check-out time</label><input type="time" id="q-checkout-time" value=""></div>
       </div>
       <div class="field"><label>Number of guests</label><input type="number" min="1" id="q-guests"></div>
       <div class="field"><label>Total amount (Rs.)</label><input type="number" id="q-total"></div>
@@ -854,8 +854,9 @@ function todayKey(){
 // is missing, which reproduces the old date-only behaviour exactly.
 function nightsBetween(checkin, checkinTime, checkout, checkoutTime){
   if(!checkin || !checkout) return null;
-  const inMs = new Date(checkin + 'T' + (checkinTime || '00:00') + ':00').getTime();
-  const outMs = new Date(checkout + 'T' + (checkoutTime || '00:00') + ':00').getTime();
+  if(!checkinTime || !checkoutTime){ checkinTime = '00:00'; checkoutTime = '00:00'; }
+  const inMs = new Date(checkin + 'T' + checkinTime + ':00').getTime();
+  const outMs = new Date(checkout + 'T' + checkoutTime + ':00').getTime();
   const hours = (outMs - inMs) / 3600000;
   return Math.max(1, Math.ceil(hours / 24));
 }
@@ -3875,8 +3876,8 @@ document.getElementById('admin-quick-btn').addEventListener('click', ()=>{
   document.getElementById('q-phone').value = '';
   document.getElementById('q-checkin-date').value = '';
   document.getElementById('q-checkout-date').value = '';
-  document.getElementById('q-checkin-time').value = '12:00';
-  document.getElementById('q-checkout-time').value = '12:00';
+  document.getElementById('q-checkin-time').value = '';
+  document.getElementById('q-checkout-time').value = '';
   document.getElementById('q-guests').value = '';
   document.getElementById('q-total').value = '';
   document.getElementById('q-advance').value = '';

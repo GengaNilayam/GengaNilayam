@@ -441,7 +441,7 @@
         <ul>
           <li>Rates shown are per night, for the whole home</li>
           <li>Comfortably fits 7 guests ideally, with 3 extra beds available for up to 10</li>
-          <li>24-hour check-in — check out any time up to 24 hours after you arrive</li>
+          <li>Flexible check-in and check-out — just tell us your approximate timings</li>
         </ul>
       </div>
     </div>
@@ -455,7 +455,7 @@
         <ul>
           <li>Rate shown is per night, for the whole home — not priced per person</li>
           <li>Comfortably fits 7 guests ideally, with 3 extra beds available for up to 10</li>
-          <li>24-hour check-in — check out any time up to 24 hours after you arrive</li>
+          <li>Flexible check-in and check-out — just tell us your approximate timings</li>
         </ul>
       </div>
     </div>
@@ -483,7 +483,7 @@
         <ul>
           <li>Rates shown are per night, for the whole home</li>
           <li>Comfortably fits 6 guests ideally, with 2 extra beds available for up to 8</li>
-          <li>24-hour check-in — check out any time up to 24 hours after you arrive</li>
+          <li>Flexible check-in and check-out — just tell us your approximate timings</li>
         </ul>
       </div>
     </div>
@@ -497,7 +497,7 @@
         <ul>
           <li>Rate shown is per night, for the whole home — not priced per person</li>
           <li>Comfortably fits 6 guests ideally, with 2 extra beds available for up to 8</li>
-          <li>24-hour check-in — check out any time up to 24 hours after you arrive</li>
+          <li>Flexible check-in and check-out — just tell us your approximate timings</li>
         </ul>
       </div>
     </div>
@@ -577,14 +577,15 @@
         <label style="font-weight:600;">Check-in date</label>
         <input id="f-checkin-display" readonly placeholder="Select check-in date" style="cursor:pointer;margin-bottom:10px;">
         <input type="hidden" id="f-checkin">
-        <label>Time</label>
+        <label>Approximate check-in time *</label>
         <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkin-hh" placeholder="06" value="12" style="width:54px;text-align:center;padding:11px 6px;">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkin-hh" placeholder="hh" value="" style="width:54px;text-align:center;padding:11px 6px;">
           <span style="font-weight:700;color:var(--ink-soft);">:</span>
-          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkin-mm" placeholder="00" value="00" style="width:54px;text-align:center;padding:11px 6px;">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkin-mm" placeholder="mm" value="" style="width:54px;text-align:center;padding:11px 6px;">
           <select id="f-checkin-ampm" style="padding:11px 8px;border:1px solid var(--line);border-radius:9px;background:#fff;font-family:'Inter';font-size:14.5px;color:var(--ink);">
+            <option value="" selected>AM/PM</option>
             <option value="AM">AM</option>
-            <option value="PM" selected>PM</option>
+            <option value="PM">PM</option>
           </select>
         </div>
       </div>
@@ -592,18 +593,19 @@
         <label style="font-weight:600;">Check-out date</label>
         <input id="f-checkout-display" readonly placeholder="Select check-out date" style="cursor:pointer;margin-bottom:10px;">
         <input type="hidden" id="f-checkout">
-        <label>Time</label>
+        <label>Approximate check-out time *</label>
         <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkout-hh" placeholder="12" value="12" style="width:54px;text-align:center;padding:11px 6px;">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkout-hh" placeholder="hh" value="" style="width:54px;text-align:center;padding:11px 6px;">
           <span style="font-weight:700;color:var(--ink-soft);">:</span>
-          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkout-mm" placeholder="00" value="00" style="width:54px;text-align:center;padding:11px 6px;">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" id="f-checkout-mm" placeholder="mm" value="" style="width:54px;text-align:center;padding:11px 6px;">
           <select id="f-checkout-ampm" style="padding:11px 8px;border:1px solid var(--line);border-radius:9px;background:#fff;font-family:'Inter';font-size:14.5px;color:var(--ink);">
+            <option value="" selected>AM/PM</option>
             <option value="AM">AM</option>
-            <option value="PM" selected>PM</option>
+            <option value="PM">PM</option>
           </select>
         </div>
       </div>
-      <div class="hint" style="margin-top:-6px;">24-hour check-in — checkout is any time up to 24 hours after you arrive (e.g. 4:00 PM check-in → 4:00 PM check-out the next day).</div>
+      <div class="hint" style="margin-top:-6px;">Please give your approximate check-in and check-out times so we can prepare the home for you.</div>
       <div class="field-row">
         <div class="field"><label>No. of adults</label><input type="number" min="1" max="10" id="f-adults" value="2" inputmode="numeric"></div>
         <div class="field"><label>No. of kids (below 7 yrs)</label><input type="number" min="0" max="10" id="f-kids" value="0" inputmode="numeric"></div>
@@ -835,6 +837,7 @@ function readTime12(hhId, mmId, ampmId){
   const mmRaw = document.getElementById(mmId).value.trim();
   const ampm = document.getElementById(ampmId).value;
   if(hhRaw === '' && mmRaw === '') return '';
+  if(!ampm) return null;
   if(hhRaw === '' || mmRaw === '' || !/^\d{1,2}$/.test(hhRaw) || !/^\d{1,2}$/.test(mmRaw)) return null;
   return hhRaw.padStart(2,'0') + ':' + mmRaw.padStart(2,'0') + ' ' + ampm;
 }
@@ -844,8 +847,9 @@ function readTime12(hhId, mmId, ampmId){
 // is missing, which reproduces the old date-only behaviour exactly.
 function nightsBetween(checkinDate, checkinTime, checkoutDate, checkoutTime){
   if(!checkinDate || !checkoutDate) return null;
-  const inMs = new Date(checkinDate + 'T' + (checkinTime || '00:00') + ':00').getTime();
-  const outMs = new Date(checkoutDate + 'T' + (checkoutTime || '00:00') + ':00').getTime();
+  if(!checkinTime || !checkoutTime){ checkinTime = '00:00'; checkoutTime = '00:00'; }
+  const inMs = new Date(checkinDate + 'T' + checkinTime + ':00').getTime();
+  const outMs = new Date(checkoutDate + 'T' + checkoutTime + ':00').getTime();
   const hours = (outMs - inMs) / 3600000;
   return Math.max(1, Math.ceil(hours / 24));
 }
@@ -1163,16 +1167,6 @@ document.getElementById('cal-confirm').addEventListener('click', ()=>{
   closeGuestCalendar();
 });
 
-/* ---------- 24-hour check-in: departure time defaults to match arrival ---------- */
-['f-checkin-hh','f-checkin-mm'].forEach(id=>{
-  document.getElementById(id).addEventListener('input', ()=>{
-    document.getElementById(id.replace('checkin','checkout')).value = document.getElementById(id).value;
-  });
-});
-document.getElementById('f-checkin-ampm').addEventListener('change', ()=>{
-  document.getElementById('f-checkout-ampm').value = document.getElementById('f-checkin-ampm').value;
-});
-
 /* ---------- Booking submit ---------- */
 document.getElementById('submit-btn').addEventListener('click', function(e){
   const name = document.getElementById('f-name').value.trim();
@@ -1189,10 +1183,10 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
-  if(checkinRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-in time, or leave both blank.'); return; }
+  if(!checkinRaw){ e.preventDefault(); alert('Please enter your approximate check-in time (hour, minute and AM/PM).'); return; }
   const checkinTime = checkinRaw ? parseTime12h(checkinRaw) : '';
   if(checkinRaw && !checkinTime){ e.preventDefault(); alert('Please enter a valid check-in time (hour 1-12, minute 00-59).'); return; }
-  if(checkoutRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-out time, or leave both blank.'); return; }
+  if(!checkoutRaw){ e.preventDefault(); alert('Please enter your approximate check-out time (hour, minute and AM/PM).'); return; }
   const checkoutTime = checkoutRaw ? parseTime12h(checkoutRaw) : '';
   if(checkoutRaw && !checkoutTime){ e.preventDefault(); alert('Please enter a valid check-out time (hour 1-12, minute 00-59).'); return; }
 
@@ -1208,8 +1202,8 @@ document.getElementById('submit-btn').addEventListener('click', function(e){
   let text = `Hi, I'd like to book Genga Nilayam (${PROPERTIES[currentProperty].name}).\n\n`;
   text += `Name: ${name}\n`;
   if(phone) text += `Phone: ${phone}\n`;
-  text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
-  text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
+  text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at approx. ' + fmtTime(checkinTime) : ''}\n`;
+  text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at approx. ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Nights: ${nights}\n`;
   text += `Guests: ${guestsText(gc)}\n`;
   text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
@@ -1252,10 +1246,10 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   if(!name){ e.preventDefault(); alert('Please enter your name'); return; }
   if(!checkin || !checkout){ e.preventDefault(); alert('Please select your check-in and check-out dates'); return; }
 
-  if(checkinRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-in time, or leave both blank.'); return; }
+  if(!checkinRaw){ e.preventDefault(); alert('Please enter your approximate check-in time (hour, minute and AM/PM).'); return; }
   const checkinTime = checkinRaw ? parseTime12h(checkinRaw) : '';
   if(checkinRaw && !checkinTime){ e.preventDefault(); alert('Please enter a valid check-in time (hour 1-12, minute 00-59).'); return; }
-  if(checkoutRaw === null){ e.preventDefault(); alert('Please fill in both the hour and minute for check-out time, or leave both blank.'); return; }
+  if(!checkoutRaw){ e.preventDefault(); alert('Please enter your approximate check-out time (hour, minute and AM/PM).'); return; }
   const checkoutTime = checkoutRaw ? parseTime12h(checkoutRaw) : '';
   if(checkoutRaw && !checkoutTime){ e.preventDefault(); alert('Please enter a valid check-out time (hour 1-12, minute 00-59).'); return; }
 
@@ -1271,8 +1265,8 @@ document.getElementById('submit-both-btn').addEventListener('click', function(e)
   let text = `Hi, I'd like to book Genga Nilayam — BOTH homes (${bothName}).\n\n`;
   text += `Name: ${name}\n`;
   if(phone) text += `Phone: ${phone}\n`;
-  text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at ' + fmtTime(checkinTime) : ''}\n`;
-  text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at ' + fmtTime(checkoutTime) : ''}\n`;
+  text += `Check-in: ${fmtDate(checkin)}${checkinTime ? ' at approx. ' + fmtTime(checkinTime) : ''}\n`;
+  text += `Check-out: ${fmtDate(checkout)}${checkoutTime ? ' at approx. ' + fmtTime(checkoutTime) : ''}\n`;
   text += `Nights: ${nights}\n`;
   text += `Guests (total across both homes): ${guestsText(gc)}\n`;
   text += `Muhurtham booking: ${peak.isMuhurtham ? 'Yes (' + (peak.type === 'valarpirai' ? 'Valarpirai' : 'Theipirai') + ' eve)' : 'No'}\n`;
