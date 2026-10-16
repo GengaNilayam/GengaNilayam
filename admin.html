@@ -519,6 +519,7 @@
         <div class="cal-hint">Loading…</div>
       </div>
 
+      <button type="button" id="rent-paste-eb" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Paste EB amounts from EB Split</button>
       <div id="rent-error-banner" style="display:none;background:#fde2e1;color:#b3261e;border:1px solid #f3b4b0;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
 
       <div id="admin-rent-unit-buttons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
@@ -2938,6 +2939,34 @@ document.getElementById('rent-range-show').addEventListener('click', ()=>{
   loadRentTenants({ mode: 'range', from, to });
 });
 
+document.getElementById('rent-paste-eb').addEventListener('click', async () => {
+  const txt = prompt('Paste the code copied from the EB Split page (starts with GNEB|):');
+  if(!txt) return;
+  const p = txt.trim().split('|');
+  if(p[0] !== 'GNEB' || !/^\d{4}-\d{2}$/.test(p[1] || '') || p.length !== 6){ alert('That code is not valid. Copy it again from the EB Split page.'); return; }
+  const mk = p[1];
+  const amts = p.slice(2).map(Number);
+  if(amts.some(a => !isFinite(a))){ alert('That code is not valid. Copy it again from the EB Split page.'); return; }
+  const ids = ['rent_gf_commercial','rent_1f_commercial','rent_2f_commercial','rent_3f_commercial'];
+  const names = ['Ground','1st','2nd','3rd'];
+  if(!confirm('Set EB amounts for ' + mk + ':\n' + names.map((n,i) => n + ' floor: Rs. ' + Math.round(amts[i])).join('\n') + '\n\nEach becomes due in full until marked paid.')) return;
+  rentClearError();
+  try{
+    for(let i = 0; i < ids.length; i++){
+      const ref = db.collection('genga_nilayam').doc(ids[i]);
+      const v = Math.round(amts[i] * 100) / 100;
+      try{
+        await ref.update({ ['months.' + mk + '.ebAmount']: v, ['months.' + mk + '.ebDueAmount']: v });
+      }catch(e){
+        await ref.set({ months: { [mk]: { ebAmount: v, ebDueAmount: v } } }, { merge: true });
+      }
+    }
+    await loadRentTenants();
+    alert('EB amounts saved for ' + mk + '.');
+  }catch(e){
+    rentShowError('Could not save EB amounts: ' + (e && e.message ? e.message : e));
+  }
+});
 document.getElementById('rent-back').addEventListener('click', async ()=>{
   document.getElementById('admin-rent-view').style.display = 'none';
   document.getElementById('admin-cal-view').style.display = 'block';
