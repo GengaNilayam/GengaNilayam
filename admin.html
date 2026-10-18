@@ -3328,6 +3328,20 @@ async function computeHomestayRevenue(opts){
   return total;
 }
 
+/* Default rental income from the other divisions of Genga Nilayam: Rs. 25,000
+   every month from December 2023 up to the current month (future months stay
+   empty). Change the numbers here if it changes. */
+const OTHER_RENT_MONTHLY = 25000;
+const OTHER_RENT_START_MK = '2023-12';
+const OTHER_RENT_SKIP_MKS = ['2026-10']; // months where this income is not counted (October 2026)
+function computeOtherDivisionsRent(opts){
+  const mks = opts.mode === 'range' ? monthKeysInRange(opts.from, opts.to) : [monthKeyFor(opts.year, opts.month)];
+  const nowD = new Date();
+  const curMk = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0');
+  const months = mks.filter(k => k >= OTHER_RENT_START_MK && k <= curMk && OTHER_RENT_SKIP_MKS.indexOf(k) === -1).length;
+  return { months, amount: months * OTHER_RENT_MONTHLY };
+}
+
 /** Every 'YYYY-MM' month key touched by a date range, inclusive. */
 function monthKeysInRange(from, to){
   const [fy, fm] = from.split('-').map(Number);
@@ -3492,7 +3506,8 @@ async function generateGnRevenueReport(opts){
     const calcOpts = gnrevMode === 'range' ? { mode: 'range', from: gnrevFrom, to: gnrevTo } : { mode: 'month', year: gnrevYear, month: gnrevMonth };
     const homestay = await computeHomestayRevenue(calcOpts);
     const rent = await computeRentSnapshot(calcOpts);
-    const total = homestay + rent.rentCollected;
+    const other = computeOtherDivisionsRent(calcOpts);
+    const total = homestay + rent.rentCollected + other.amount;
     const label = gnrevMode === 'range'
       ? `${fmtDate(gnrevFrom)} to ${fmtDate(gnrevTo)}`
       : new Date(gnrevYear, gnrevMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
@@ -3503,6 +3518,11 @@ async function generateGnRevenueReport(opts){
         <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Homestay revenue</div>
         <div style="font-size:18px;font-weight:700;color:var(--deep-2);">Rs. ${homestay.toLocaleString('en-IN')}</div>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Invoiced bookings checking in during ${label}</div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Rental income - other divisions <span style="font-size:10.5px;font-weight:700;background:var(--sky);color:var(--deep-2);padding:2px 7px;border-radius:99px;vertical-align:middle;">AUTO</span></div>
+        <div style="font-size:18px;font-weight:700;color:var(--deep-2);">Rs. ${other.amount.toLocaleString('en-IN')}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">${other.months} month${other.months === 1 ? '' : 's'} x Rs. ${OTHER_RENT_MONTHLY.toLocaleString('en-IN')} (from December 2023)</div>
       </div>
       <div style="border:1px solid var(--line);border-radius:10px;padding:12px;">
         <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Rent collected</div>
@@ -3715,7 +3735,8 @@ async function generateGnPlReport(opts){
     const calcOpts = gnplMode === 'range' ? { mode: 'range', from: gnplFrom, to: gnplTo } : { mode: 'month', year: gnplYear, month: gnplMonth };
     const homestay = await computeHomestayRevenue(calcOpts);
     const rent = await computeRentSnapshot(calcOpts);
-    const totalRevenue = homestay + rent.rentCollected;
+    const other = computeOtherDivisionsRent(calcOpts);
+    const totalRevenue = homestay + rent.rentCollected + other.amount;
     const exp = await computeExpensesTotal(calcOpts);
     const pl = totalRevenue - exp.total;
     const label = gnplMode === 'range'
@@ -3728,7 +3749,7 @@ async function generateGnPlReport(opts){
       <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;">
         <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Total revenue</div>
         <div style="font-size:18px;font-weight:700;color:var(--deep-2);">Rs. ${totalRevenue.toLocaleString('en-IN')}</div>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">Homestay: Rs. ${homestay.toLocaleString('en-IN')} &middot; Rent collected: Rs. ${rent.rentCollected.toLocaleString('en-IN')}</div>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">Homestay: Rs. ${homestay.toLocaleString('en-IN')} &middot; Rent collected: Rs. ${rent.rentCollected.toLocaleString('en-IN')} &middot; Other divisions rent: Rs. ${other.amount.toLocaleString('en-IN')}</div>
       </div>
       <div style="border:1px solid var(--line);border-radius:10px;padding:12px;">
         <div style="font-weight:600;font-size:14px;margin-bottom:6px;">Total expenses</div>
