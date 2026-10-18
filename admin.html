@@ -3342,6 +3342,61 @@ function computeOtherDivisionsRent(opts){
   return { months, amount: months * OTHER_RENT_MONTHLY };
 }
 
+/* ---- Month-by-month finance series (used by the GN reports and Data Analysis) ----
+   Reads the database once and works out, for every month from fromMk to toMk
+   ('YYYY-MM'): homestay revenue, rent collected (Rent Tracker), the automatic
+   other-divisions rent, every expense (typed + automatic) by category, profit. */
+const GN_START_MK = '2023-12';
+function gnCurMk(){ const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0'); }
+async function gnFinanceSeries(fromMk, toMk){
+  const snap = await db.collection('genga_nilayam').get();
+  const mks = monthKeysInRange(fromMk + '-01', toMk + '-01');
+  const S = {};
+  mks.forEach(k => { S[k] = { mk: k, homestay: 0, bookings: 0, rent: 0, other: 0, exp: 0, cat: {}, revenue: 0, profit: 0 }; });
+  const addExp = (m, cat, amt) => { m.exp += amt; m.cat[cat] = (m.cat[cat] || 0) + amt; };
+  const manual = [];
+  snap.forEach(doc => {
+    const d = doc.data(), id = doc.id;
+    if(id.startsWith('request_') && d.status === 'invoiced' && d.checkin){
+      const mk = d.checkin.slice(0, 7);
+      if(S[mk]){
+        S[mk].homestay += Number(d.total) || 0; S[mk].bookings++;
+        addExp(S[mk], AUTO_CAT_STAFF, d.checkin < AUTO_STAFF_RATE_CHANGE ? AUTO_STAFF_RATE_OLD : AUTO_STAFF_RATE_NEW);
+      }
+    } else if(id.startsWith('expense_') && d.date){
+      const mk = d.date.slice(0, 7);
+      if(S[mk]){ const amt = Number(d.amount) || 0; addExp(S[mk], d.category || 'Uncategorised', amt); manual.push({ id, date: d.date, category: d.category || 'Uncategorised', amount: amt, note: d.note || '' }); }
+    }
+  });
+  const curMk = gnCurMk();
+  mks.forEach(k => {
+    if(k >= AUTO_MANAGER_START_MK && k <= curMk) addExp(S[k], AUTO_CAT_MANAGER, AUTO_MANAGER_MONTHLY);
+    if(k >= OTHER_RENT_START_MK && k <= curMk && OTHER_RENT_SKIP_MKS.indexOf(k) === -1) S[k].other = OTHER_RENT_MONTHLY;
+  });
+  // Rent Tracker: read the 5 unit documents once and pick out each month
+  const tot = {}, due = {};
+  for(const unit of GN_RENT_UNITS){
+    try{
+      const rd = await db.collection('genga_nilayam').doc(unit.id).get();
+      const months = (rd.exists && rd.data().months) || {};
+      mks.forEach(k => { const md = months[k]; if(md){ tot[k] = (tot[k] || 0) + (Number(md.rentAmount) || 0); due[k] = (due[k] || 0) + (Number(md.rentDueAmount) || 0); } });
+    }catch(e){}
+  }
+  mks.forEach(k => { S[k].rent = Math.max(0, (tot[k] || 0) - (due[k] || 0)); });
+  const months = mks.map(k => { const m = S[k]; m.revenue = m.homestay + m.rent + m.other; m.profit = m.revenue - m.exp; return m; });
+  return { months, manual };
+}
+function gnPeriodMks(mode, y, m){
+  return mode === 'all' ? [GN_START_MK, gnCurMk()] : [monthKeyFor(y, m), monthKeyFor(y, m)];
+}
+const gnInr = n => 'Rs. ' + Math.round(n).toLocaleString('en-IN');
+const gnMonLbl = mk => new Date(mk + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+function gnTable(heads, rows, foot){
+  const cell = (v, i, b) => `<td style="padding:5px 6px;border-bottom:1px solid var(--line);${i ? 'text-align:right;' : ''}white-space:nowrap;${b ? 'font-weight:700;' : ''}">${v}</td>`;
+  return `<div style="overflow-x:auto;margin-top:12px;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;"><thead><tr>${heads.map((h, i) => `<th style="padding:5px 6px;border-bottom:2px solid var(--line);text-align:${i ? 'right' : 'left'};white-space:nowrap;">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => '<tr>' + r.map((v, i) => cell(v, i, false)).join('') + '</tr>').join('')}${foot ? '<tr>' + foot.map((v, i) => cell(v, i, true)).join('') + '</tr>' : ''}</tbody></table></div>`;
+}
+const gnPeriodLabel = (mode, y, m) => mode === 'all' ? 'All months: December 2023 to date' : new Date(y, m, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
 /** Every 'YYYY-MM' month key touched by a date range, inclusive. */
 function monthKeysInRange(from, to){
   const [fy, fm] = from.split('-').map(Number);
@@ -3447,15 +3502,15 @@ async function computeExpensesTotal(opts){
   return { total, byCategory };
 }
 
-function populateMonthYearSelects(monthId, yearId){
+function populateMonthYearSelects(monthId, yearId, withAll){
   const now = new Date();
   const monthSel = document.getElementById(monthId);
-  monthSel.innerHTML = MONTH_NAMES.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
-  monthSel.value = now.getMonth();
+  monthSel.innerHTML = (withAll ? '<option value="all">All months (Dec 2023 to date)</option>' : '') + MONTH_NAMES.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+  monthSel.value = withAll ? 'all' : now.getMonth();
   const yearSel = document.getElementById(yearId);
   const thisYear = now.getFullYear();
   const years = [];
-  for(let y = thisYear - 2; y <= thisYear + 1; y++) years.push(y);
+  for(let y = (withAll ? 2023 : thisYear - 2); y <= thisYear + 1; y++) years.push(y);
   yearSel.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
   yearSel.value = thisYear;
 }
@@ -3467,11 +3522,12 @@ function wireRangeToggle(prefix, onApply){
   const fields = document.getElementById(prefix + '-range-fields');
   const monthSel = document.getElementById(prefix + '-month-select');
   const yearSel = document.getElementById(prefix + '-year-select');
+  const periodFromSelects = () => monthSel.value === 'all' ? { mode: 'all' } : { mode: 'month', year: Number(yearSel.value), month: Number(monthSel.value) };
   toggleBtn.addEventListener('click', ()=>{
     const showing = fields.style.display !== 'none';
     fields.style.display = showing ? 'none' : 'block';
     toggleBtn.textContent = showing ? 'Use a custom date range instead' : 'Use a month instead';
-    if(showing){ onApply({ mode: 'month', year: Number(yearSel.value), month: Number(monthSel.value) }); }
+    if(showing){ onApply(periodFromSelects()); }
   });
   document.getElementById(prefix + '-range-show').addEventListener('click', ()=>{
     const from = displayToIso(document.getElementById(prefix + '-range-from').value);
@@ -3480,8 +3536,8 @@ function wireRangeToggle(prefix, onApply){
     if(to < from){ alert('The "to" date needs to be after the "from" date.'); return; }
     onApply({ mode: 'range', from, to });
   });
-  monthSel.addEventListener('change', ()=> onApply({ mode: 'month', year: Number(yearSel.value), month: Number(monthSel.value) }));
-  yearSel.addEventListener('change', ()=> onApply({ mode: 'month', year: Number(yearSel.value), month: Number(monthSel.value) }));
+  monthSel.addEventListener('change', ()=> onApply(periodFromSelects()));
+  yearSel.addEventListener('change', ()=> { if(monthSel.value !== 'all') onApply(periodFromSelects()); });
 }
 
 function resetRangeUi(prefix){
@@ -3502,6 +3558,26 @@ async function generateGnRevenueReport(opts){
   }
   const listEl = document.getElementById('admin-gn-revenue-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
+  if(gnrevMode !== 'range'){
+    try{
+      const [f, t] = gnPeriodMks(gnrevMode, gnrevYear, gnrevMonth);
+      const { months } = await gnFinanceSeries(f, t);
+      const sum = k => months.reduce((a, m) => a + m[k], 0);
+      const hs = sum('homestay'), rn = sum('rent'), ot = sum('other'), total = hs + rn + ot;
+      const rows = months.slice().reverse().map(m => [gnMonLbl(m.mk), gnInr(m.homestay), gnInr(m.rent), gnInr(m.other), gnInr(m.revenue)]);
+      listEl.innerHTML = `
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px;">${gnPeriodLabel(gnrevMode, gnrevYear, gnrevMonth)}</div>
+        <div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:12px;">${gnInr(total)}</div>
+        <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:600;font-size:14px;margin-bottom:4px;">Homestay revenue</div><div style="font-size:18px;font-weight:700;color:var(--deep-2);">${gnInr(hs)}</div><div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Invoiced bookings by check-in month</div></div>
+        <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:600;font-size:14px;margin-bottom:4px;">Rental income - other divisions <span style="font-size:10.5px;font-weight:700;background:var(--sky);color:var(--deep-2);padding:2px 7px;border-radius:99px;vertical-align:middle;">AUTO</span></div><div style="font-size:18px;font-weight:700;color:var(--deep-2);">${gnInr(ot)}</div><div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Rs. ${OTHER_RENT_MONTHLY.toLocaleString('en-IN')} per month from December 2023</div></div>
+        <div style="border:1px solid var(--line);border-radius:10px;padding:12px;"><div style="font-weight:600;font-size:14px;margin-bottom:4px;">Rent collected (Rent Tracker)</div><div style="font-size:18px;font-weight:700;color:var(--deep-2);">${gnInr(rn)}</div></div>
+        ${months.length > 1 ? '<div style="font-weight:700;font-size:14px;margin-top:16px;">Month by month</div>' + gnTable(['Month', 'Homestay', 'Rent', 'Other div.', 'Total'], rows, ['Total', gnInr(hs), gnInr(rn), gnInr(ot), gnInr(total)]) : ''}
+      `;
+    }catch(e){
+      console.error(e); listEl.innerHTML = '<div class="cal-hint">Could not load GN revenue report.</div>';
+    }
+    return;
+  }
   try{
     const calcOpts = gnrevMode === 'range' ? { mode: 'range', from: gnrevFrom, to: gnrevTo } : { mode: 'month', year: gnrevYear, month: gnrevMonth };
     const homestay = await computeHomestayRevenue(calcOpts);
@@ -3540,8 +3616,8 @@ document.getElementById('admin-gn-revenue-btn').addEventListener('click', async 
   document.getElementById('admin-gn-revenue-view').style.display = 'block';
   gnrevMode = 'month'; gnrevYear = null; gnrevMonth = null; gnrevFrom = null; gnrevTo = null;
   resetRangeUi('gnrev');
-  populateMonthYearSelects('gnrev-month-select', 'gnrev-year-select');
-  await generateGnRevenueReport({ mode: 'month', year: new Date().getFullYear(), month: new Date().getMonth() });
+  populateMonthYearSelects('gnrev-month-select', 'gnrev-year-select', true);
+  await generateGnRevenueReport({ mode: 'all' });
 });
 wireRangeToggle('gnrev', generateGnRevenueReport);
 document.getElementById('gn-revenue-back').addEventListener('click', async ()=>{
@@ -3625,7 +3701,9 @@ async function generateGnExpensesReport(opts){
   const listEl = document.getElementById('admin-gn-expenses-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
   try{
-    const calcOpts = gnexpMode === 'range' ? { mode: 'range', from: gnexpFrom, to: gnexpTo } : { mode: 'month', year: gnexpYear, month: gnexpMonth };
+    const calcOpts = gnexpMode === 'range' ? { mode: 'range', from: gnexpFrom, to: gnexpTo }
+      : gnexpMode === 'all' ? { mode: 'range', from: GN_START_MK + '-01', to: todayKey() }
+      : { mode: 'month', year: gnexpYear, month: gnexpMonth };
     const snap = await db.collection('genga_nilayam').get();
     const items = [];
     snap.forEach(doc=>{
@@ -3648,6 +3726,7 @@ async function generateGnExpensesReport(opts){
     autoItems.forEach(x => { byCategory[x.category] = (byCategory[x.category]||0) + x.amount; });
     const label = gnexpMode === 'range'
       ? `${fmtDate(gnexpFrom)} to ${fmtDate(gnexpTo)}`
+      : gnexpMode === 'all' ? 'All months: December 2023 to date'
       : new Date(gnexpYear, gnexpMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
 
     let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${label}</div>`;
@@ -3663,6 +3742,15 @@ async function generateGnExpensesReport(opts){
           <div style="font-weight:700;font-size:14.5px;">${x.category} &middot; Rs. ${x.amount.toLocaleString('en-IN')} <span style="font-size:10.5px;font-weight:700;background:var(--sky);color:var(--deep-2);padding:2px 7px;border-radius:99px;vertical-align:middle;">AUTO</span></div>
           <div style="font-size:12.5px;color:var(--ink-soft);">${x.note}</div>
         </div>`).join('');
+    if(gnexpMode === 'all'){
+      const { months } = await gnFinanceSeries(GN_START_MK, gnCurMk());
+      const elec = m => Object.keys(m.cat).filter(c => c.indexOf('Electricity') === 0).reduce((a, c) => a + m.cat[c], 0);
+      const rows = months.slice().reverse().map(m => [gnMonLbl(m.mk), gnInr(m.cat[AUTO_CAT_STAFF] || 0), gnInr(m.cat[AUTO_CAT_MANAGER] || 0), gnInr(elec(m)), gnInr(m.exp - (m.cat[AUTO_CAT_STAFF] || 0) - (m.cat[AUTO_CAT_MANAGER] || 0) - elec(m)), gnInr(m.exp)]);
+      const sm = f => months.reduce((a, m) => a + f(m), 0);
+      html += '<div style="font-weight:700;font-size:14px;margin:4px 0 0;">Month by month</div>' + gnTable(['Month', 'Staff', 'Manager', 'Electricity', 'Other', 'Total'], rows,
+        ['Total', gnInr(sm(m => m.cat[AUTO_CAT_STAFF] || 0)), gnInr(sm(m => m.cat[AUTO_CAT_MANAGER] || 0)), gnInr(sm(elec)), gnInr(sm(m => m.exp - (m.cat[AUTO_CAT_STAFF] || 0) - (m.cat[AUTO_CAT_MANAGER] || 0) - elec(m))), gnInr(sm(m => m.exp))]);
+      html += '<div style="font-weight:700;font-size:14px;margin:16px 0 8px;">All entries</div>';
+    }
     if(items.length === 0 && autoItems.length === 0){
       html += '<div class="cal-hint">No expenses recorded for this period.</div>';
     } else {
@@ -3710,8 +3798,8 @@ document.getElementById('admin-gn-expenses-btn').addEventListener('click', async
   document.getElementById('eb-status').textContent = '';
   gnexpMode = 'month'; gnexpYear = null; gnexpMonth = null; gnexpFrom = null; gnexpTo = null;
   resetRangeUi('gnexp');
-  populateMonthYearSelects('gnexp-month-select', 'gnexp-year-select');
-  await generateGnExpensesReport({ mode: 'month', year: new Date().getFullYear(), month: new Date().getMonth() });
+  populateMonthYearSelects('gnexp-month-select', 'gnexp-year-select', true);
+  await generateGnExpensesReport({ mode: 'all' });
 });
 wireRangeToggle('gnexp', generateGnExpensesReport);
 document.getElementById('gn-expenses-back').addEventListener('click', async ()=>{
@@ -3731,6 +3819,25 @@ async function generateGnPlReport(opts){
   }
   const listEl = document.getElementById('admin-gn-pl-list');
   listEl.innerHTML = '<div class="cal-hint">Loading…</div>';
+  if(gnplMode !== 'range'){
+    try{
+      const [f, t] = gnPeriodMks(gnplMode, gnplYear, gnplMonth);
+      const { months } = await gnFinanceSeries(f, t);
+      const rev = months.reduce((a, m) => a + m.revenue, 0), ex = months.reduce((a, m) => a + m.exp, 0), pl = rev - ex;
+      const col = v => v >= 0 ? 'var(--deep)' : '#b3261e';
+      const rows = months.slice().reverse().map(m => [gnMonLbl(m.mk), gnInr(m.revenue), gnInr(m.exp), `<span style="color:${col(m.profit)};font-weight:600;">${gnInr(m.profit)}</span>`]);
+      listEl.innerHTML = `
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px;">${gnPeriodLabel(gnplMode, gnplYear, gnplMonth)}</div>
+        <div style="font-size:28px;font-weight:700;color:${col(pl)};margin-bottom:12px;">${gnInr(pl)} ${pl >= 0 ? '(profit)' : '(loss)'}</div>
+        <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:600;font-size:14px;margin-bottom:6px;">Total revenue</div><div style="font-size:18px;font-weight:700;color:var(--deep-2);">${gnInr(rev)}</div><div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">Homestay: ${gnInr(months.reduce((a, m) => a + m.homestay, 0))} &middot; Rent collected: ${gnInr(months.reduce((a, m) => a + m.rent, 0))} &middot; Other divisions rent: ${gnInr(months.reduce((a, m) => a + m.other, 0))}</div></div>
+        <div style="border:1px solid var(--line);border-radius:10px;padding:12px;"><div style="font-weight:600;font-size:14px;margin-bottom:6px;">Total expenses</div><div style="font-size:18px;font-weight:700;color:var(--deep-2);">${gnInr(ex)}</div></div>
+        ${months.length > 1 ? '<div style="font-weight:700;font-size:14px;margin-top:16px;">Month by month</div>' + gnTable(['Month', 'Revenue', 'Expenses', 'Profit'], rows, ['Total', gnInr(rev), gnInr(ex), `<span style="color:${col(pl)}">${gnInr(pl)}</span>`]) : ''}
+      `;
+    }catch(e){
+      console.error(e); listEl.innerHTML = '<div class="cal-hint">Could not load profit/loss report.</div>';
+    }
+    return;
+  }
   try{
     const calcOpts = gnplMode === 'range' ? { mode: 'range', from: gnplFrom, to: gnplTo } : { mode: 'month', year: gnplYear, month: gnplMonth };
     const homestay = await computeHomestayRevenue(calcOpts);
@@ -3766,8 +3873,8 @@ document.getElementById('admin-gn-pl-btn').addEventListener('click', async ()=>{
   document.getElementById('admin-gn-pl-view').style.display = 'block';
   gnplMode = 'month'; gnplYear = null; gnplMonth = null; gnplFrom = null; gnplTo = null;
   resetRangeUi('gnpl');
-  populateMonthYearSelects('gnpl-month-select', 'gnpl-year-select');
-  await generateGnPlReport({ mode: 'month', year: new Date().getFullYear(), month: new Date().getMonth() });
+  populateMonthYearSelects('gnpl-month-select', 'gnpl-year-select', true);
+  await generateGnPlReport({ mode: 'all' });
 });
 wireRangeToggle('gnpl', generateGnPlReport);
 
@@ -4069,7 +4176,70 @@ function daRender(){
   /* Table view of monthly data */
   h += '<details><summary>Show the monthly numbers as a table</summary><div class="da-card" style="margin-top:8px;"><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Month</th>' + lineYears.map(y => '<th>' + y + ' bookings</th><th>' + y + ' revenue</th>').join('') + '</tr></thead><tbody>'
     + DA_MON.map((mn, m) => '<tr><td>' + mn + '</td>' + lineYears.map(y => '<td>' + yr[y].mn[m] + '</td><td>' + daInr(yr[y].mr[m]) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div></div></details>';
+  h += '<div id="da-fin"></div>';
   body.innerHTML = h;
+  daRenderFinance();
+}
+
+/* ----- money: revenue, expenses, profit and electricity ----- */
+let daFinCache = null;
+const DA_C_REV = '#2a78d6', DA_C_EXP = '#eb6834', DA_C_PROFIT = '#1baf7a';
+async function daRenderFinance(){
+  const box = document.getElementById('da-fin'); if(!box) return;
+  box.innerHTML = '<div class="da-sec">Money: revenue, expenses and profit</div><div class="cal-hint">Loading expenses and electricity bills…</div>';
+  try{
+    if(!daFinCache) daFinCache = await gnFinanceSeries(GN_START_MK, gnCurMk());
+    const { months, manual } = daFinCache;
+    if(!document.getElementById('da-fin')) return;
+    const sum = f => months.reduce((a, m) => a + f(m), 0);
+    const rev = sum(m => m.revenue), exp = sum(m => m.exp), profit = rev - exp, hs = sum(m => m.homestay);
+    const elecOf = m => Object.keys(m.cat).filter(c => c.indexOf('Electricity') === 0).reduce((a, c) => a + m.cat[c], 0);
+    const elec = sum(elecOf);
+    const lbl = mk => DA_MON[+mk.slice(5) - 1] + ' ' + mk.slice(2, 4);
+    let f = '<div class="da-sec">Money: revenue, expenses and profit</div><div class="da-secsub">Whole of Genga Nilayam (all properties and divisions), December 2023 to date. Includes the automatic staff, manager and other-division figures and every electricity bill. Not affected by the property filter above.</div>';
+    f += '<ul class="da-insights">'
+      + '<li>Total revenue <b>' + daInr(rev) + '</b>, total expenses <b>' + daInr(exp) + '</b>, profit <b style="color:' + (profit >= 0 ? '#006300' : '#b3261e') + '">' + daInr(profit) + '</b> (' + (rev ? Math.round(profit / rev * 100) : 0) + '% margin).</li>'
+      + '<li>Electricity bills: <b>' + daInr(elec) + '</b> in total, ' + (hs ? Math.round(elec / hs * 100) : 0) + '% of homestay revenue.</li>'
+      + '</ul><div class="da-cols">';
+    // revenue / expenses / profit per month
+    const xl = months.map(m => lbl(m.mk));
+    const sM = [{ name: 'Revenue', color: DA_C_REV, values: months.map(m => m.revenue) }, { name: 'Expenses', color: DA_C_EXP, values: months.map(m => m.exp) }, { name: 'Profit', color: DA_C_PROFIT, values: months.map(m => Math.max(0, m.profit)) }];
+    f += daCard('Revenue, expenses and profit per month', 'Every month from December 2023 (a loss month is drawn at zero profit).', daLines(sM, xl, { label: 'Revenue, expenses and profit per month', fmt: daShort, tipFmt: daInr, noDots: months.length > 14 }), daLegend(sM));
+    // per year
+    const yrs = []; months.forEach(m => { const y = m.mk.slice(0, 4); if(yrs.indexOf(y) < 0) yrs.push(y); });
+    const Y = yrs.map(y => { const L = months.filter(m => m.mk.slice(0, 4) === y); return { y, rev: daSum(L, m => m.revenue), exp: daSum(L, m => m.exp), el: daSum(L, elecOf), n: L.length }; });
+    f += daCard('Profit per year', 'Revenue minus expenses; 2023 is December only, the current year is part-year.', daBars(Y.map(r => ({ label: r.y, value: Math.max(0, r.rev - r.exp), top: daShort(r.rev - r.exp), tip: r.y + ': revenue ' + daInr(r.rev) + ', expenses ' + daInr(r.exp) + ', profit ' + daInr(r.rev - r.exp), color: r.rev - r.exp >= 0 ? DA_C_PROFIT : '#e34948' })), { label: 'Profit per year', fmt: daShort }));
+    // electricity per bill
+    const bills = months.filter(m => elecOf(m) > 0);
+    if(bills.length){
+      const sE = [{ name: 'Electricity bill', color: DA_C_EXP, values: bills.map(elecOf) }];
+      f += daCard('Electricity bills over time', 'Each point is one bill (estimated bills are included - see the list below).', daLines(sE, bills.map(m => lbl(m.mk)), { label: 'Electricity bills', fmt: daShort, tipFmt: daInr }));
+      f += daCard('Electricity per year', 'Total of all bills in each year.', daBars(Y.map(r => ({ label: r.y, value: r.el, top: daShort(r.el), tip: r.y + ': ' + daInr(r.el) + ' electricity' })), { label: 'Electricity per year', color: DA_C_EXP, fmt: daShort }));
+    }
+    f += '</div>';
+    // expense categories
+    const cat = {}; months.forEach(m => Object.keys(m.cat).forEach(c => { cat[c] = (cat[c] || 0) + m.cat[c]; }));
+    const cats = Object.keys(cat).sort((a, b) => cat[b] - cat[a]);
+    f += '<div class="da-card" style="margin-top:12px;"><h4>Expenses by category</h4><div class="sub">All expenses to date, including the automatic ones.</div><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Category</th><th>Amount</th><th>Share</th></tr></thead><tbody>'
+      + cats.map(c => '<tr><td>' + c + '</td><td>' + daInr(cat[c]) + '</td><td><span style="display:inline-block;height:8px;border-radius:4px;background:' + DA_C_EXP + ';width:' + Math.max(2, Math.round(cat[c] / exp * 100)) + 'px;vertical-align:middle;"></span> ' + Math.round(cat[c] / exp * 100) + '%</td></tr>').join('') + '</tbody></table></div></div>';
+    // year table
+    f += '<div class="da-card" style="margin-top:12px;"><h4>Yearly summary</h4><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Year</th><th>Revenue</th><th>Expenses</th><th>Electricity</th><th>Profit</th></tr></thead><tbody>'
+      + Y.map(r => '<tr><td>' + r.y + '</td><td>' + daInr(r.rev) + '</td><td>' + daInr(r.exp) + '</td><td>' + daInr(r.el) + '</td><td style="color:' + (r.rev - r.exp >= 0 ? '#006300' : '#b3261e') + '">' + daInr(r.rev - r.exp) + '</td></tr>').join('')
+      + '<tr><td><b>Total</b></td><td><b>' + daInr(rev) + '</b></td><td><b>' + daInr(exp) + '</b></td><td><b>' + daInr(elec) + '</b></td><td><b>' + daInr(profit) + '</b></td></tr></tbody></table></div></div>';
+    // every electricity bill
+    const eb = manual.filter(x => x.category.indexOf('Electricity') === 0).sort((a, b) => a.date < b.date ? 1 : -1);
+    if(eb.length){
+      f += '<details><summary>Show every electricity bill (' + eb.length + ')</summary><div class="da-card" style="margin-top:8px;"><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Bill date</th><th>Home</th><th>Amount</th><th>Note</th></tr></thead><tbody>'
+        + eb.map(x => '<tr><td>' + x.date + '</td><td>' + x.category.replace('Electricity - ', '') + '</td><td>' + daInr(x.amount) + '</td><td>' + (/ESTIMATE/.test(x.note) ? '<b style="color:#b3261e">Estimate</b> ' : '') + x.note.replace(/^EB bill dated [^-]*- ?/, '').replace(/ESTIMATE - /, '') + '</td></tr>').join('') + '</tbody></table></div></div></details>';
+    }
+    // month table
+    f += '<details><summary>Show revenue, expenses and profit month by month</summary><div class="da-card" style="margin-top:8px;"><div class="da-scroll"><table class="da-tbl"><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Electricity</th><th>Profit</th></tr></thead><tbody>'
+      + months.slice().reverse().map(m => '<tr><td>' + lbl(m.mk) + '</td><td>' + daInr(m.revenue) + '</td><td>' + daInr(m.exp) + '</td><td>' + daInr(elecOf(m)) + '</td><td style="color:' + (m.profit >= 0 ? '#006300' : '#b3261e') + '">' + daInr(m.profit) + '</td></tr>').join('') + '</tbody></table></div></div></details>';
+    document.getElementById('da-fin').innerHTML = f;
+  }catch(e){
+    console.error(e);
+    const b2 = document.getElementById('da-fin'); if(b2) b2.innerHTML = '<div class="da-sec">Money: revenue, expenses and profit</div><div class="cal-hint">Could not load the expense data.</div>';
+  }
 }
 
 /* ----- tooltips (hover on desktop, tap on phone) ----- */
@@ -4099,6 +4269,7 @@ document.getElementById('admin-da-btn').addEventListener('click', async () => {
   document.querySelector('#admin-overlay .cal-modal').classList.add('wide');
   const note = document.getElementById('da-note'), body = document.getElementById('da-body');
   note.textContent = 'Loading booking data…'; body.innerHTML = '';
+  daFinCache = null;
   try{
     daAll = await daLoad();
     const props = []; daAll.forEach(b => { if(props.indexOf(b.prop) < 0) props.push(b.prop); }); props.sort();
