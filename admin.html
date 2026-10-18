@@ -633,6 +633,20 @@
     <div id="admin-gn-expenses-view" style="display:none;">
       <div class="cal-title" style="text-align:left;margin-bottom:4px;">GN Expenses</div>
       <div class="cal-hint" style="margin-bottom:14px;">Type any category you like - it doesn't need to match anything set up in advance.</div>
+      <div class="cal-hint" style="margin-bottom:14px;background:#faf7f0;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;">Added automatically every month: <b>Staff Rs. 200 per booking</b> (up to May 2026) / <b>Rs. 250 per booking</b> (from June 2026), and <b>Rs. 3,000 per month</b> (from September 2026) for the property manager and staff. They show below tagged AUTO.</div>
+      <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:16px;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px;">Electricity (EB) bill</div>
+        <div class="field-row">
+          <div class="field"><label>Home</label>
+            <select id="eb-home" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"><option value="Home#1">Home#1</option><option value="Home#2">Home#2</option></select>
+          </div>
+          <div class="field"><label>Bill month</label><input type="month" id="eb-month"></div>
+        </div>
+        <div class="field"><label>Bill amount (Rs.)</label><input type="number" id="eb-amount"></div>
+        <div class="field"><label>Attach the bill (PDF or photo, optional)</label><input type="file" id="eb-file" accept="application/pdf,image/*" style="width:100%;padding:7px 0;font-family:inherit;font-size:13px;"></div>
+        <button type="button" class="btn btn-primary" id="eb-add-btn" style="width:100%;padding:10px 16px;">+ Add electricity bill</button>
+        <div class="cal-hint" id="eb-status" style="margin-top:6px;"></div>
+      </div>
       <div class="field"><label>Category</label><input id="exp-category" placeholder="e.g. Repairs, Property tax, Water tanker"></div>
       <div class="field-row">
         <div class="field"><label>Amount (Rs.)</label><input type="number" id="exp-amount"></div>
@@ -3136,7 +3150,7 @@ async function uploadDocFile(file, storagePath, onProgress){
   return { name: file.name, url: '', path: '', fsId, chunks: total, type: file.type || 'application/octet-stream', size: file.size, uploadedAt: new Date().toISOString() };
 }
 
-async function docsOpenFirestoreFile(doc){
+async function docsOpenFirestoreFile(doc, onError){
   const w = window.open('', '_blank');
   try{
     const parts = [];
@@ -3158,7 +3172,8 @@ async function docsOpenFirestoreFile(doc){
     setTimeout(() => URL.revokeObjectURL(url), 120000);
   }catch(e){
     if(w) w.close();
-    docsShowError('Could not open document: ' + ((e && e.message) || e));
+    const m = 'Could not open document: ' + ((e && e.message) || e);
+    if(onError) onError(m); else docsShowError(m);
   }
 }
 
@@ -3345,6 +3360,52 @@ async function computeRentSnapshot(opts){
   return { totalRent, rentDue, ebDue, rentCollected, monthsCovered: mks.length };
 }
 
+/* ---- Default (automatic) expenses ----
+   Two expenses are worked out automatically instead of being typed in:
+     - Staff: Rs. 200 per booking up to May 2026, Rs. 250 per booking from
+       June 2026 (by check-in date), for every invoiced homestay booking.
+     - Property manager + staff: Rs. 3,000 every month.
+   The per-booking amount starts from the first invoiced homestay booking. The
+   monthly amount starts from September 2026 and counts up to the current month
+   (future months stay empty).
+   Change these numbers here if the arrangement changes. */
+const AUTO_STAFF_RATE_OLD = 200;
+const AUTO_STAFF_RATE_NEW = 250;
+const AUTO_STAFF_RATE_CHANGE = '2026-06-01'; // check-ins from this date use the new rate
+const AUTO_MANAGER_MONTHLY = 3000;
+const AUTO_MANAGER_START_MK = '2026-09'; // the monthly amount starts from September 2026
+const AUTO_CAT_STAFF = 'Staff - per booking';
+const AUTO_CAT_MANAGER = 'Property management (monthly)';
+
+async function computeAutoExpenses(opts){
+  const snap = await db.collection('genga_nilayam').get();
+  const booked = [];
+  snap.forEach(doc=>{
+    const d = doc.data();
+    if(!doc.id.startsWith('request_') || d.status !== 'invoiced' || !d.checkin) return;
+    booked.push(d.checkin);
+  });
+  if(!booked.length) return [];
+  booked.sort();
+  const nowD = new Date();
+  const curMk = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0');
+  const mks = opts.mode === 'range' ? monthKeysInRange(opts.from, opts.to) : [monthKeyFor(opts.year, opts.month)];
+  const inPeriod = c => {
+    if(opts.mode === 'range') return c >= opts.from && c <= opts.to;
+    return c.slice(0, 7) === mks[0];
+  };
+  const out = [];
+  const inRange = booked.filter(inPeriod);
+  const nOld = inRange.filter(c => c < AUTO_STAFF_RATE_CHANGE).length;
+  const nNew = inRange.length - nOld;
+  const firstDay = mks[0] + '-01';
+  if(nOld) out.push({ auto: true, category: AUTO_CAT_STAFF, amount: nOld * AUTO_STAFF_RATE_OLD, date: firstDay, note: nOld + ' booking' + (nOld === 1 ? '' : 's') + ' x Rs. ' + AUTO_STAFF_RATE_OLD });
+  if(nNew) out.push({ auto: true, category: AUTO_CAT_STAFF, amount: nNew * AUTO_STAFF_RATE_NEW, date: firstDay, note: nNew + ' booking' + (nNew === 1 ? '' : 's') + ' x Rs. ' + AUTO_STAFF_RATE_NEW });
+  const mMonths = mks.filter(k => k >= AUTO_MANAGER_START_MK && k <= curMk).length;
+  if(mMonths) out.push({ auto: true, category: AUTO_CAT_MANAGER, amount: mMonths * AUTO_MANAGER_MONTHLY, date: firstDay, note: mMonths + ' month' + (mMonths === 1 ? '' : 's') + ' x Rs. ' + AUTO_MANAGER_MONTHLY });
+  return out;
+}
+
 async function computeExpensesTotal(opts){
   const snap = await db.collection('genga_nilayam').get();
   let total = 0;
@@ -3363,6 +3424,11 @@ async function computeExpensesTotal(opts){
     total += amt;
     const cat = data.category || 'Uncategorised';
     byCategory[cat] = (byCategory[cat] || 0) + amt;
+  });
+  const autoItems = await computeAutoExpenses(opts);
+  autoItems.forEach(x => {
+    total += x.amount;
+    byCategory[x.category] = (byCategory[x.category] || 0) + x.amount;
   });
   return { total, byCategory };
 }
@@ -3491,6 +3557,45 @@ async function addExpense(){
 }
 document.getElementById('exp-add-btn').addEventListener('click', addExpense);
 
+async function addEbBill(){
+  const home = document.getElementById('eb-home').value;
+  const month = document.getElementById('eb-month').value; // YYYY-MM
+  const amount = Number(document.getElementById('eb-amount').value) || 0;
+  const fileInput = document.getElementById('eb-file');
+  const file = fileInput.files && fileInput.files[0];
+  const st = document.getElementById('eb-status');
+  const btn = document.getElementById('eb-add-btn');
+  if(!month){ alert('Please pick the bill month.'); return; }
+  if(!amount){ alert('Please enter the bill amount.'); return; }
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…'; st.textContent = '';
+  try{
+    const data = {
+      category: 'Electricity - ' + home, amount, date: month + '-01',
+      note: 'EB bill ' + new Date(month + '-01T00:00:00').toLocaleDateString('en-IN', { month:'long', year:'numeric' }),
+      createdAt: new Date().toISOString()
+    };
+    if(file){
+      const meta = await uploadDocFile(file, '', p => { btn.textContent = 'Uploading bill… ' + p + '%'; });
+      data.billFsId = meta.fsId; data.billChunks = meta.chunks; data.billType = meta.type; data.billName = meta.name;
+    }
+    await db.collection('genga_nilayam').doc('expense_' + Date.now()).set(data);
+    document.getElementById('eb-amount').value = '';
+    fileInput.value = '';
+    st.textContent = 'Added for ' + home + ', ' + data.note + '.';
+    const d = new Date(data.date + 'T00:00:00');
+    resetRangeUi('gnexp');
+    document.getElementById('gnexp-month-select').value = d.getMonth();
+    document.getElementById('gnexp-year-select').value = d.getFullYear();
+    await generateGnExpensesReport({ mode: 'month', year: d.getFullYear(), month: d.getMonth() });
+  }catch(e){
+    st.textContent = 'Could not save: ' + ((e && e.message) || e);
+  }finally{
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+document.getElementById('eb-add-btn').addEventListener('click', addEbBill);
+
 async function generateGnExpensesReport(opts){
   if(opts){
     gnexpMode = opts.mode;
@@ -3516,9 +3621,11 @@ async function generateGnExpensesReport(opts){
       items.push({ id: doc.id, ...data });
     });
     items.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
-    const total = items.reduce((s,x)=> s + (Number(x.amount)||0), 0);
+    const autoItems = await computeAutoExpenses(calcOpts);
+    const total = items.reduce((s,x)=> s + (Number(x.amount)||0), 0) + autoItems.reduce((s,x)=> s + x.amount, 0);
     const byCategory = {};
     items.forEach(x => { const c = x.category || 'Uncategorised'; byCategory[c] = (byCategory[c]||0) + (Number(x.amount)||0); });
+    autoItems.forEach(x => { byCategory[x.category] = (byCategory[x.category]||0) + x.amount; });
     const label = gnexpMode === 'range'
       ? `${fmtDate(gnexpFrom)} to ${fmtDate(gnexpTo)}`
       : new Date(gnexpYear, gnexpMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
@@ -3531,22 +3638,39 @@ async function generateGnExpensesReport(opts){
         cats.map(c => `<span style="background:var(--sky);color:var(--deep-2);font-size:12px;font-weight:600;padding:5px 11px;border-radius:99px;">${c}: Rs. ${byCategory[c].toLocaleString('en-IN')}</span>`).join('') +
         `</div>`;
     }
-    if(items.length === 0){
+    html += autoItems.map(x => `
+        <div style="border:1px dashed var(--line);border-radius:10px;padding:10px 12px;background:#faf7f0;">
+          <div style="font-weight:700;font-size:14.5px;">${x.category} &middot; Rs. ${x.amount.toLocaleString('en-IN')} <span style="font-size:10.5px;font-weight:700;background:var(--sky);color:var(--deep-2);padding:2px 7px;border-radius:99px;vertical-align:middle;">AUTO</span></div>
+          <div style="font-size:12.5px;color:var(--ink-soft);">${x.note}</div>
+        </div>`).join('');
+    if(items.length === 0 && autoItems.length === 0){
       html += '<div class="cal-hint">No expenses recorded for this period.</div>';
     } else {
       html += items.map(x => `
         <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
           <div style="font-weight:700;font-size:14.5px;">${x.category || 'Uncategorised'} &middot; Rs. ${(Number(x.amount)||0).toLocaleString('en-IN')}</div>
           <div style="font-size:12.5px;color:var(--ink-soft);">${fmtDateReport(x.date)}${x.note ? ' &middot; ' + x.note : ''}</div>
-          <div style="margin-top:6px;"><button type="button" class="exp-delete-btn" data-id="${x.id}" style="background:none;border:none;color:#b3261e;font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove</button></div>
+          <div style="margin-top:6px;display:flex;gap:14px;">${x.billFsId ? `<button type="button" class="exp-bill-btn" data-id="${x.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">View EB bill</button>` : ''}<button type="button" class="exp-delete-btn" data-id="${x.id}" style="background:none;border:none;color:#b3261e;font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Remove</button></div>
         </div>
       `).join('');
     }
     listEl.innerHTML = html;
+    listEl.querySelectorAll('.exp-bill-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const x = items.find(i => i.id === btn.getAttribute('data-id'));
+        if(x) docsOpenFirestoreFile({ fsId: x.billFsId, chunks: x.billChunks, type: x.billType, name: x.billName }, m => alert(m));
+      });
+    });
     listEl.querySelectorAll('.exp-delete-btn').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         if(!confirm('Remove this expense entry?')) return;
-        try{ await db.collection('genga_nilayam').doc(btn.getAttribute('data-id')).delete(); }catch(e){}
+        try{
+          const ref = db.collection('genga_nilayam').doc(btn.getAttribute('data-id'));
+          const snapDoc = await ref.get();
+          const d = snapDoc.exists ? snapDoc.data() : null;
+          if(d && d.billFsId) await docsDeleteFirestoreFile({ fsId: d.billFsId, chunks: d.billChunks });
+          await ref.delete();
+        }catch(e){}
         await generateGnExpensesReport();
       });
     });
@@ -3561,6 +3685,9 @@ document.getElementById('admin-gn-expenses-btn').addEventListener('click', async
   document.getElementById('exp-amount').value = '';
   document.getElementById('exp-note').value = '';
   document.getElementById('exp-date').value = todayKey();
+  document.getElementById('eb-month').value = todayKey().slice(0, 7);
+  document.getElementById('eb-amount').value = '';
+  document.getElementById('eb-status').textContent = '';
   gnexpMode = 'month'; gnexpYear = null; gnexpMonth = null; gnexpFrom = null; gnexpTo = null;
   resetRangeUi('gnexp');
   populateMonthYearSelects('gnexp-month-select', 'gnexp-year-select');
