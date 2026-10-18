@@ -3089,11 +3089,45 @@ function renderDocsPropList(){
   });
 }
 
-async function uploadDocFile(file, storagePath){
-  const ref = storage.ref(storagePath);
-  await ref.put(file);
-  const url = await ref.getDownloadURL();
-  return { name: file.name, url, path: storagePath, uploadedAt: new Date().toISOString() };
+/* Uploads with live progress and a clear failure message. Firebase Storage
+   normally retries a refused upload silently for up to 10 minutes, which just
+   looks like "Uploading…" forever - so the retry window is cut to 20 seconds
+   and a stalled upload is cancelled with an explanation. */
+function uploadDocFile(file, storagePath, onProgress){
+  try{ storage.setMaxUploadRetryTime(20000); storage.setMaxOperationRetryTime(20000); }catch(e){}
+  return new Promise((resolve, reject) => {
+    const ref = storage.ref(storagePath);
+    const task = ref.put(file);
+    let lastBytes = -1, stalledFor = 0;
+    const watchdog = setInterval(() => {
+      const b = task.snapshot.bytesTransferred;
+      if(b === lastBytes){ stalledFor += 1; } else { stalledFor = 0; lastBytes = b; }
+      if(stalledFor >= 20){
+        clearInterval(watchdog);
+        try{ task.cancel(); }catch(e){}
+        reject(new Error('Upload stalled. Firebase Storage is not accepting files - check that Storage is enabled for the project and its rules allow uploads (see Firebase console > Storage).'));
+      }
+    }, 1000);
+    task.on('state_changed',
+      snap => { if(onProgress && snap.totalBytes) onProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)); },
+      err => {
+        clearInterval(watchdog);
+        const code = err && err.code ? err.code : '';
+        let msg = (err && err.message) || String(err);
+        if(code === 'storage/unauthorized') msg = 'Firebase Storage rules are blocking uploads (storage/unauthorized). In Firebase console > Storage > Rules, allow read and write on genga_documents/.';
+        else if(code === 'storage/retry-limit-exceeded') msg = 'Could not reach Firebase Storage (timed out). Storage may not be enabled for this project, or the connection dropped. Try again on a better connection.';
+        else if(code === 'storage/bucket-not-found' || code === 'storage/project-not-found') msg = 'Firebase Storage is not set up for this project (' + code + '). Enable Storage in the Firebase console.';
+        else if(code === 'storage/canceled') return;
+        reject(new Error(msg));
+      },
+      async () => {
+        clearInterval(watchdog);
+        try{
+          const url = await ref.getDownloadURL();
+          resolve({ name: file.name, url, path: storagePath, uploadedAt: new Date().toISOString() });
+        }catch(e){ reject(e); }
+      });
+  });
 }
 
 document.getElementById('docs-tax-upload-btn').addEventListener('click', async () => {
@@ -3107,7 +3141,7 @@ document.getElementById('docs-tax-upload-btn').addEventListener('click', async (
   btn.disabled = true; btn.textContent = 'Uploading…';
   try{
     const storagePath = 'genga_documents/tax/' + year + '/' + Date.now() + '_' + file.name;
-    const meta = await uploadDocFile(file, storagePath);
+    const meta = await uploadDocFile(file, storagePath, p => { btn.textContent = 'Uploading… ' + p + '%'; });
     const existing = (docsIndexCache.taxByYear && docsIndexCache.taxByYear[year]) || [];
     const updated = existing.concat([meta]);
     await db.collection('genga_nilayam').doc('documents_index').update({ ['taxByYear.' + year]: updated });
@@ -3133,7 +3167,7 @@ document.getElementById('docs-prop-upload-btn').addEventListener('click', async 
   btn.disabled = true; btn.textContent = 'Uploading…';
   try{
     const storagePath = 'genga_documents/property/' + Date.now() + '_' + file.name;
-    const meta = await uploadDocFile(file, storagePath);
+    const meta = await uploadDocFile(file, storagePath, p => { btn.textContent = 'Uploading… ' + p + '%'; });
     if(labelInput.value.trim()) meta.name = labelInput.value.trim();
     const updated = (docsIndexCache.propertyDocs || []).concat([meta]);
     await db.collection('genga_nilayam').doc('documents_index').update({ propertyDocs: updated });
