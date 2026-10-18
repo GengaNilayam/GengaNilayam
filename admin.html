@@ -3039,9 +3039,10 @@ function docsFileRow(doc, onDelete){
   row.style.border = '1px solid var(--line)';
   row.style.borderRadius = '8px';
   row.innerHTML = `
-    <a href="${doc.url}" target="_blank" rel="noopener" style="color:var(--wood);font-weight:600;font-size:13px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${doc.name}</a>
+    <a href="${doc.fsId ? '#' : doc.url}" ${doc.fsId ? '' : 'target="_blank" rel="noopener"'} class="docs-open-link" style="color:var(--wood);font-weight:600;font-size:13px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${doc.name}</a>
     <button type="button" class="btn docs-delete-btn" style="padding:6px 12px;background:#fff;color:#b3261e;border:1px solid #f3b4b0;font-size:12px;">Remove</button>
   `;
+  if(doc.fsId){ row.querySelector('.docs-open-link').addEventListener('click', ev => { ev.preventDefault(); docsClearError(); docsOpenFirestoreFile(doc); }); }
   row.querySelector('.docs-delete-btn').addEventListener('click', onDelete);
   return row;
 }
@@ -3089,45 +3090,83 @@ function renderDocsPropList(){
   });
 }
 
-/* Uploads with live progress and a clear failure message. Firebase Storage
-   normally retries a refused upload silently for up to 10 minutes, which just
-   looks like "Uploading…" forever - so the retry window is cut to 20 seconds
-   and a stalled upload is cancelled with an explanation. */
-function uploadDocFile(file, storagePath, onProgress){
-  try{ storage.setMaxUploadRetryTime(20000); storage.setMaxOperationRetryTime(20000); }catch(e){}
+/* Documents are stored in the Firestore database itself (no Firebase Storage or
+   paid plan needed). Each file is read as base64 and split into ~700 KB pieces,
+   one Firestore document per piece, in the 'genga_doc_files' collection. The
+   document list entry keeps {fsId, chunks, type, size}. Files uploaded earlier
+   to Storage keep working through their saved url. */
+const DOCS_MAX_BYTES = 8 * 1024 * 1024;
+const DOCS_CHUNK_CHARS = 700000;
+const DOCS_FILES_COLL = 'genga_doc_files';
+
+function readFileAsBase64(file){
   return new Promise((resolve, reject) => {
-    const ref = storage.ref(storagePath);
-    const task = ref.put(file);
-    let lastBytes = -1, stalledFor = 0;
-    const watchdog = setInterval(() => {
-      const b = task.snapshot.bytesTransferred;
-      if(b === lastBytes){ stalledFor += 1; } else { stalledFor = 0; lastBytes = b; }
-      if(stalledFor >= 20){
-        clearInterval(watchdog);
-        try{ task.cancel(); }catch(e){}
-        reject(new Error('Upload stalled. Firebase Storage is not accepting files - check that Storage is enabled for the project and its rules allow uploads (see Firebase console > Storage).'));
-      }
-    }, 1000);
-    task.on('state_changed',
-      snap => { if(onProgress && snap.totalBytes) onProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)); },
-      err => {
-        clearInterval(watchdog);
-        const code = err && err.code ? err.code : '';
-        let msg = (err && err.message) || String(err);
-        if(code === 'storage/unauthorized') msg = 'Firebase Storage rules are blocking uploads (storage/unauthorized). In Firebase console > Storage > Rules, allow read and write on genga_documents/.';
-        else if(code === 'storage/retry-limit-exceeded') msg = 'Could not reach Firebase Storage (timed out). Storage may not be enabled for this project, or the connection dropped. Try again on a better connection.';
-        else if(code === 'storage/bucket-not-found' || code === 'storage/project-not-found') msg = 'Firebase Storage is not set up for this project (' + code + '). Enable Storage in the Firebase console.';
-        else if(code === 'storage/canceled') return;
-        reject(new Error(msg));
-      },
-      async () => {
-        clearInterval(watchdog);
-        try{
-          const url = await ref.getDownloadURL();
-          resolve({ name: file.name, url, path: storagePath, uploadedAt: new Date().toISOString() });
-        }catch(e){ reject(e); }
-      });
+    const r = new FileReader();
+    r.onerror = () => reject(new Error('Could not read that file.'));
+    r.onload = () => {
+      const res = String(r.result || '');
+      const k = res.indexOf(',');
+      resolve(k >= 0 ? res.slice(k + 1) : res);
+    };
+    r.readAsDataURL(file);
   });
+}
+
+async function uploadDocFile(file, storagePath, onProgress){
+  if(file.size > DOCS_MAX_BYTES){
+    throw new Error('That file is ' + (file.size / 1048576).toFixed(1) + ' MB. The limit is 8 MB - please attach a smaller or compressed copy.');
+  }
+  const b64 = await readFileAsBase64(file);
+  const fsId = 'f' + Date.now() + Math.random().toString(36).slice(2, 7);
+  const total = Math.max(1, Math.ceil(b64.length / DOCS_CHUNK_CHARS));
+  const written = [];
+  try{
+    for(let n = 0; n < total; n++){
+      await db.collection(DOCS_FILES_COLL).doc(fsId + '_' + n).set({
+        fsId, n, data: b64.slice(n * DOCS_CHUNK_CHARS, (n + 1) * DOCS_CHUNK_CHARS)
+      });
+      written.push(n);
+      if(onProgress) onProgress(Math.round((n + 1) / total * 100));
+    }
+  }catch(e){
+    // roll back the pieces already written so nothing is left half-saved
+    for(const n of written){ try{ await db.collection(DOCS_FILES_COLL).doc(fsId + '_' + n).delete(); }catch(e2){} }
+    throw new Error('Could not save the file to the database: ' + ((e && e.message) || e) + ' (If this mentions permissions, the Firestore rules need to allow the "' + DOCS_FILES_COLL + '" collection.)');
+  }
+  return { name: file.name, url: '', path: '', fsId, chunks: total, type: file.type || 'application/octet-stream', size: file.size, uploadedAt: new Date().toISOString() };
+}
+
+async function docsOpenFirestoreFile(doc){
+  const w = window.open('', '_blank');
+  try{
+    const parts = [];
+    for(let n = 0; n < doc.chunks; n++){
+      const snap = await db.collection(DOCS_FILES_COLL).doc(doc.fsId + '_' + n).get();
+      if(!snap.exists) throw new Error('part ' + (n + 1) + ' of ' + doc.chunks + ' is missing');
+      parts.push(snap.data().data);
+    }
+    const bin = atob(parts.join(''));
+    const bytes = new Uint8Array(bin.length);
+    for(let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+    const blob = new Blob([bytes], { type: doc.type || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    if(w){ w.location.href = url; }
+    else {
+      const a = document.createElement('a');
+      a.href = url; a.download = doc.name || 'document'; document.body.appendChild(a); a.click(); a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  }catch(e){
+    if(w) w.close();
+    docsShowError('Could not open document: ' + ((e && e.message) || e));
+  }
+}
+
+async function docsDeleteFirestoreFile(doc){
+  if(!doc || !doc.fsId) return;
+  for(let n = 0; n < (doc.chunks || 0); n++){
+    try{ await db.collection(DOCS_FILES_COLL).doc(doc.fsId + '_' + n).delete(); }catch(e){}
+  }
 }
 
 document.getElementById('docs-tax-upload-btn').addEventListener('click', async () => {
@@ -3189,7 +3228,7 @@ async function deleteTaxDoc(year, idx){
   const doc = list[idx];
   if(!doc) return;
   try{
-    try{ await storage.ref(doc.path).delete(); }catch(e){ /* file may already be gone - still remove the entry */ }
+    if(doc.fsId){ await docsDeleteFirestoreFile(doc); } else { try{ await storage.ref(doc.path).delete(); }catch(e){ /* file may already be gone - still remove the entry */ } }
     const updated = list.slice(0, idx).concat(list.slice(idx + 1));
     await db.collection('genga_nilayam').doc('documents_index').update({ ['taxByYear.' + year]: updated });
     docsIndexCache.taxByYear[year] = updated;
@@ -3206,7 +3245,7 @@ async function deletePropDoc(idx){
   const doc = list[idx];
   if(!doc) return;
   try{
-    try{ await storage.ref(doc.path).delete(); }catch(e){ /* file may already be gone - still remove the entry */ }
+    if(doc.fsId){ await docsDeleteFirestoreFile(doc); } else { try{ await storage.ref(doc.path).delete(); }catch(e){ /* file may already be gone - still remove the entry */ } }
     const updated = list.slice(0, idx).concat(list.slice(idx + 1));
     await db.collection('genga_nilayam').doc('documents_index').update({ propertyDocs: updated });
     docsIndexCache.propertyDocs = updated;
