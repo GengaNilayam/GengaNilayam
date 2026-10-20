@@ -335,8 +335,8 @@
           <dt>Chennai Home</dt><dd style="margin:0;font-weight:600;text-align:right;">09296009992</dd>
         </dl>
       </div>
-      <button type="button" class="btn btn-primary" id="admin-gn-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-gn-expenses-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Expenses</button>
+      <button type="button" class="btn btn-primary" id="admin-gn-revenue-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN Revenue report</button>
       <button type="button" class="btn btn-primary" id="admin-gn-pl-btn" style="width:100%;padding:10px 16px;margin-bottom:10px;">Generate GN profit/loss report</button>
       <button type="button" class="btn btn-primary" id="admin-da-btn" style="width:100%;padding:10px 16px;margin-bottom:18px;">Data Analysis</button>
       <div id="admin-visits-section" style="margin-bottom:18px;">
@@ -633,7 +633,12 @@
     <div id="admin-gn-expenses-view" style="display:none;">
       <div class="cal-title" style="text-align:left;margin-bottom:4px;">GN Expenses</div>
       <div class="cal-hint" style="margin-bottom:14px;">Type any category you like - it doesn't need to match anything set up in advance.</div>
-      <div class="cal-hint" style="margin-bottom:14px;background:#faf7f0;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;">Added automatically every month: <b>Staff Rs. 200 per booking</b> (up to May 2026) / <b>Rs. 250 per booking</b> (from June 2026), and <b>Rs. 3,000 per month</b> (from September 2026) for the property manager and staff. They show below tagged AUTO.</div>
+      <div id="auto-rates-panel" style="border:1px dashed var(--line);border-radius:10px;padding:12px;margin-bottom:14px;background:#faf7f0;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:2px;">Automatic expense rates</div>
+        <div class="cal-hint" style="margin-bottom:8px;">Added to every month on its own. To change a rate, type the new amount, choose the month it starts from, and tap Update. Earlier months keep their old rate.</div>
+        <div id="auto-rates-rows"></div>
+        <div class="cal-hint" id="auto-rates-status" style="margin-top:6px;"></div>
+      </div>
       <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:16px;">
         <div style="font-weight:700;font-size:14px;margin-bottom:8px;">Electricity (EB) bill</div>
         <div class="field-row">
@@ -3349,6 +3354,7 @@ function computeOtherDivisionsRent(opts){
 const GN_START_MK = '2023-12';
 function gnCurMk(){ const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0'); }
 async function gnFinanceSeries(fromMk, toMk){
+  await gnLoadRates();
   const snap = await db.collection('genga_nilayam').get();
   const mks = monthKeysInRange(fromMk + '-01', toMk + '-01');
   const S = {};
@@ -3361,7 +3367,7 @@ async function gnFinanceSeries(fromMk, toMk){
       const mk = d.checkin.slice(0, 7);
       if(S[mk]){
         S[mk].homestay += Number(d.total) || 0; S[mk].bookings++;
-        addExp(S[mk], AUTO_CAT_STAFF, d.checkin < AUTO_STAFF_RATE_CHANGE ? AUTO_STAFF_RATE_OLD : AUTO_STAFF_RATE_NEW);
+        addExp(S[mk], AUTO_CAT_STAFF, autoRateFor('staff', mk));
       }
     } else if(id.startsWith('expense_') && d.date){
       const mk = d.date.slice(0, 7);
@@ -3370,7 +3376,7 @@ async function gnFinanceSeries(fromMk, toMk){
   });
   const curMk = gnCurMk();
   mks.forEach(k => {
-    if(k >= AUTO_MANAGER_START_MK && k <= curMk) addExp(S[k], AUTO_CAT_MANAGER, AUTO_MANAGER_MONTHLY);
+    if(k <= curMk) AUTO_DEFS.forEach(def => { if(def.key !== 'staff'){ const r = autoRateFor(def.key, k); if(r > 0) addExp(S[k], def.cat, r); } });
     if(k >= OTHER_RENT_START_MK && k <= curMk && OTHER_RENT_SKIP_MKS.indexOf(k) === -1) S[k].other = OTHER_RENT_MONTHLY;
   });
   // Rent Tracker: read the 5 unit documents once and pick out each month
@@ -3430,23 +3436,45 @@ async function computeRentSnapshot(opts){
 }
 
 /* ---- Default (automatic) expenses ----
-   Two expenses are worked out automatically instead of being typed in:
-     - Staff: Rs. 200 per booking up to May 2026, Rs. 250 per booking from
-       June 2026 (by check-in date), for every invoiced homestay booking.
-     - Property manager + staff: Rs. 3,000 every month.
-   The per-booking amount starts from the first invoiced homestay booking. The
-   monthly amount starts from September 2026 and counts up to the current month
-   (future months stay empty).
-   Change these numbers here if the arrangement changes. */
-const AUTO_STAFF_RATE_OLD = 200;
-const AUTO_STAFF_RATE_NEW = 250;
-const AUTO_STAFF_RATE_CHANGE = '2026-06-01'; // check-ins from this date use the new rate
-const AUTO_MANAGER_MONTHLY = 3000;
-const AUTO_MANAGER_START_MK = '2026-09'; // the monthly amount starts from September 2026
-const AUTO_CAT_STAFF = 'Staff - per booking';
-const AUTO_CAT_MANAGER = 'Property management (monthly)';
+   Worked out automatically for every month, using rates you can change in
+   GN Expenses > "Automatic expense rates":
+     - Staff salary: per booking (by check-in month)
+     - Manager salary, Wi-Fi, Cable: per month, up to the current month
+   Each rate is a short history of {from: 'YYYY-MM', rate}: a change only
+   affects months from its "from" month onwards, so past months keep the old
+   rate. The built-in defaults below are used until you save changes. */
+const AUTO_DEFAULT_RATES = {
+  staff:   [{ from: '2023-12', rate: 200 }, { from: '2026-06', rate: 250 }],
+  manager: [{ from: '2026-09', rate: 3000 }],
+  wifi:    [{ from: '2023-12', rate: 400 }],
+  cable:   [{ from: '2024-12', rate: 270 }]
+};
+const AUTO_DEFS = [
+  { key: 'staff',   cat: 'Staff salary (per booking)', label: 'Staff salary', unit: 'per booking' },
+  { key: 'manager', cat: 'Manager salary (monthly)',   label: 'Manager salary', unit: 'per month' },
+  { key: 'wifi',    cat: 'Wi-Fi (monthly)',            label: 'Wi-Fi', unit: 'per month' },
+  { key: 'cable',   cat: 'Cable (monthly)',            label: 'Cable', unit: 'per month' }
+];
+const AUTO_CAT_STAFF = AUTO_DEFS[0].cat, AUTO_CAT_MANAGER = AUTO_DEFS[1].cat, AUTO_CAT_WIFI = AUTO_DEFS[2].cat, AUTO_CAT_CABLE = AUTO_DEFS[3].cat;
+const AUTO_RATES_DOC = 'settings_expense_rates';
+let AUTO_RATES = JSON.parse(JSON.stringify(AUTO_DEFAULT_RATES));
+
+function autoRateFor(key, mk){
+  let r = 0;
+  (AUTO_RATES[key] || []).slice().sort((a, b) => a.from < b.from ? -1 : 1).forEach(e => { if(e.from <= mk) r = Number(e.rate) || 0; });
+  return r;
+}
+async function gnLoadRates(){
+  AUTO_RATES = JSON.parse(JSON.stringify(AUTO_DEFAULT_RATES));
+  try{
+    const d = await db.collection('genga_nilayam').doc(AUTO_RATES_DOC).get();
+    const items = d.exists && d.data().items;
+    if(items) Object.keys(items).forEach(k => { if(Array.isArray(items[k]) && items[k].length && AUTO_RATES[k]) AUTO_RATES[k] = items[k].map(e => ({ from: String(e.from), rate: Number(e.rate) || 0 })); });
+  }catch(e){}
+}
 
 async function computeAutoExpenses(opts){
+  await gnLoadRates();
   const snap = await db.collection('genga_nilayam').get();
   const booked = [];
   snap.forEach(doc=>{
@@ -3454,24 +3482,21 @@ async function computeAutoExpenses(opts){
     if(!doc.id.startsWith('request_') || d.status !== 'invoiced' || !d.checkin) return;
     booked.push(d.checkin);
   });
-  if(!booked.length) return [];
-  booked.sort();
-  const nowD = new Date();
-  const curMk = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0');
+  const curMk = gnCurMk();
   const mks = opts.mode === 'range' ? monthKeysInRange(opts.from, opts.to) : [monthKeyFor(opts.year, opts.month)];
-  const inPeriod = c => {
-    if(opts.mode === 'range') return c >= opts.from && c <= opts.to;
-    return c.slice(0, 7) === mks[0];
-  };
+  const inPeriod = c => opts.mode === 'range' ? (c >= opts.from && c <= opts.to) : c.slice(0, 7) === mks[0];
   const out = [];
-  const inRange = booked.filter(inPeriod);
-  const nOld = inRange.filter(c => c < AUTO_STAFF_RATE_CHANGE).length;
-  const nNew = inRange.length - nOld;
   const firstDay = mks[0] + '-01';
-  if(nOld) out.push({ auto: true, category: AUTO_CAT_STAFF, amount: nOld * AUTO_STAFF_RATE_OLD, date: firstDay, note: nOld + ' booking' + (nOld === 1 ? '' : 's') + ' x Rs. ' + AUTO_STAFF_RATE_OLD });
-  if(nNew) out.push({ auto: true, category: AUTO_CAT_STAFF, amount: nNew * AUTO_STAFF_RATE_NEW, date: firstDay, note: nNew + ' booking' + (nNew === 1 ? '' : 's') + ' x Rs. ' + AUTO_STAFF_RATE_NEW });
-  const mMonths = mks.filter(k => k >= AUTO_MANAGER_START_MK && k <= curMk).length;
-  if(mMonths) out.push({ auto: true, category: AUTO_CAT_MANAGER, amount: mMonths * AUTO_MANAGER_MONTHLY, date: firstDay, note: mMonths + ' month' + (mMonths === 1 ? '' : 's') + ' x Rs. ' + AUTO_MANAGER_MONTHLY });
+  const group = (list, rateOf) => { const g = {}; list.forEach(x => { const r = rateOf(x); if(r > 0) g[r] = (g[r] || 0) + 1; }); return g; };
+  // staff: per booking, rate by the booking's check-in month
+  const sg = group(booked.filter(inPeriod), c => autoRateFor('staff', c.slice(0, 7)));
+  Object.keys(sg).forEach(r => out.push({ auto: true, category: AUTO_CAT_STAFF, amount: sg[r] * Number(r), date: firstDay, note: sg[r] + ' booking' + (sg[r] === 1 ? '' : 's') + ' x Rs. ' + r }));
+  // monthly items
+  ['manager', 'wifi', 'cable'].forEach(key => {
+    const def = AUTO_DEFS.filter(x => x.key === key)[0];
+    const mg = group(mks.filter(k => k <= curMk), k => autoRateFor(key, k));
+    Object.keys(mg).forEach(r => out.push({ auto: true, category: def.cat, amount: mg[r] * Number(r), date: firstDay, note: mg[r] + ' month' + (mg[r] === 1 ? '' : 's') + ' x Rs. ' + r }));
+  });
   return out;
 }
 
@@ -3653,6 +3678,46 @@ async function addExpense(){
 }
 document.getElementById('exp-add-btn').addEventListener('click', addExpense);
 
+function autoHistoryText(key){
+  const mn = mk => new Date(mk + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  return (AUTO_RATES[key] || []).slice().sort((a, b) => a.from < b.from ? -1 : 1).map(e => 'Rs. ' + e.rate + ' from ' + mn(e.from)).join(' &rarr; ');
+}
+async function renderAutoRatesPanel(){
+  await gnLoadRates();
+  const host = document.getElementById('auto-rates-rows');
+  const curMk = gnCurMk();
+  host.innerHTML = AUTO_DEFS.map(def => `
+    <div style="border-top:1px solid var(--line);padding:8px 0;">
+      <div style="font-weight:600;font-size:13.5px;">${def.label} <span style="font-weight:400;color:var(--ink-soft);">(${def.unit})</span></div>
+      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;">${autoHistoryText(def.key)}</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:90px;"><div style="font-size:11.5px;color:var(--ink-soft);">New rate (Rs.)</div><input type="number" class="ar-rate" data-key="${def.key}" value="${autoRateFor(def.key, curMk)}" style="width:100%;"></div>
+        <div style="flex:1;min-width:130px;"><div style="font-size:11.5px;color:var(--ink-soft);">From month</div><input type="month" class="ar-from" data-key="${def.key}" value="${curMk}" style="width:100%;"></div>
+        <button type="button" class="btn btn-primary ar-save" data-key="${def.key}" style="padding:9px 14px;">Update</button>
+      </div>
+    </div>`).join('');
+  host.querySelectorAll('.ar-save').forEach(btn => btn.addEventListener('click', async () => {
+    const key = btn.getAttribute('data-key');
+    const rate = Number(host.querySelector('.ar-rate[data-key="' + key + '"]').value);
+    const from = host.querySelector('.ar-from[data-key="' + key + '"]').value;
+    const st = document.getElementById('auto-rates-status');
+    if(!(rate >= 0) || host.querySelector('.ar-rate[data-key="' + key + '"]').value === ''){ alert('Please enter the rate.'); return; }
+    if(!from){ alert('Please choose the month this rate starts from.'); return; }
+    btn.disabled = true; st.textContent = 'Saving…';
+    try{
+      await gnLoadRates();
+      const list = (AUTO_RATES[key] || []).filter(e => e.from !== from);
+      list.push({ from, rate });
+      list.sort((a, b) => a.from < b.from ? -1 : 1);
+      AUTO_RATES[key] = list;
+      await db.collection('genga_nilayam').doc(AUTO_RATES_DOC).set({ items: AUTO_RATES, updatedAt: new Date().toISOString() });
+      st.textContent = 'Saved. ' + AUTO_DEFS.filter(d => d.key === key)[0].label + ' is now Rs. ' + rate + ' from ' + gnMonLbl(from) + '.';
+      await renderAutoRatesPanel();
+      await generateGnExpensesReport();
+    }catch(e){ st.textContent = 'Could not save: ' + ((e && e.message) || e); btn.disabled = false; }
+  }));
+}
+
 async function addEbBill(){
   const home = document.getElementById('eb-home').value;
   const month = document.getElementById('eb-month').value; // YYYY-MM
@@ -3745,10 +3810,12 @@ async function generateGnExpensesReport(opts){
     if(gnexpMode === 'all'){
       const { months } = await gnFinanceSeries(GN_START_MK, gnCurMk());
       const elec = m => Object.keys(m.cat).filter(c => c.indexOf('Electricity') === 0).reduce((a, c) => a + m.cat[c], 0);
-      const rows = months.slice().reverse().map(m => [gnMonLbl(m.mk), gnInr(m.cat[AUTO_CAT_STAFF] || 0), gnInr(m.cat[AUTO_CAT_MANAGER] || 0), gnInr(elec(m)), gnInr(m.exp - (m.cat[AUTO_CAT_STAFF] || 0) - (m.cat[AUTO_CAT_MANAGER] || 0) - elec(m)), gnInr(m.exp)]);
-      const sm = f => months.reduce((a, m) => a + f(m), 0);
-      html += '<div style="font-weight:700;font-size:14px;margin:4px 0 0;">Month by month</div>' + gnTable(['Month', 'Staff', 'Manager', 'Electricity', 'Other', 'Total'], rows,
-        ['Total', gnInr(sm(m => m.cat[AUTO_CAT_STAFF] || 0)), gnInr(sm(m => m.cat[AUTO_CAT_MANAGER] || 0)), gnInr(sm(elec)), gnInr(sm(m => m.exp - (m.cat[AUTO_CAT_STAFF] || 0) - (m.cat[AUTO_CAT_MANAGER] || 0) - elec(m))), gnInr(sm(m => m.exp))]);
+      const part = m => [m.cat[AUTO_CAT_STAFF] || 0, m.cat[AUTO_CAT_MANAGER] || 0, m.cat[AUTO_CAT_WIFI] || 0, m.cat[AUTO_CAT_CABLE] || 0, elec(m)];
+      const other = m => m.exp - part(m).reduce((a, v) => a + v, 0);
+      const rows = months.slice().reverse().map(m => [gnMonLbl(m.mk)].concat(part(m).map(gnInr), [gnInr(other(m)), gnInr(m.exp)]));
+      const tot = [0, 1, 2, 3, 4].map(i2 => months.reduce((a, m) => a + part(m)[i2], 0));
+      html += '<div style="font-weight:700;font-size:14px;margin:4px 0 0;">Month by month</div>' + gnTable(['Month', 'Staff', 'Manager', 'Wi-Fi', 'Cable', 'Electricity', 'Other', 'Total'], rows,
+        ['Total'].concat(tot.map(gnInr), [gnInr(months.reduce((a, m) => a + other(m), 0)), gnInr(months.reduce((a, m) => a + m.exp, 0))]));
       html += '<div style="font-weight:700;font-size:14px;margin:16px 0 8px;">All entries</div>';
     }
     if(items.length === 0 && autoItems.length === 0){
@@ -3796,6 +3863,7 @@ document.getElementById('admin-gn-expenses-btn').addEventListener('click', async
   document.getElementById('eb-month').value = todayKey().slice(0, 7);
   document.getElementById('eb-amount').value = '';
   document.getElementById('eb-status').textContent = '';
+  renderAutoRatesPanel();
   gnexpMode = 'month'; gnexpYear = null; gnexpMonth = null; gnexpFrom = null; gnexpTo = null;
   resetRangeUi('gnexp');
   populateMonthYearSelects('gnexp-month-select', 'gnexp-year-select', true);
