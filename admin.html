@@ -1337,6 +1337,40 @@ function guestBreak(r, plain){
   }
   return plain ? (t + extra) : (t + ' guests' + extra);
 }
+/* Overlap guard: an invoice may not be created if its check-in/check-out
+   window overlaps another live invoice for the same home (or either home when
+   one of them is "both"). Back-to-back stays (check-out time at or before the
+   next check-in time) are fine. Missing times default to 12:00 in / 11:00 out. */
+function stayWindowMs(checkin, checkinTime, checkout, checkoutTime){
+  const a = new Date(checkin + 'T' + (checkinTime || '12:00') + ':00').getTime();
+  const b = new Date(checkout + 'T' + (checkoutTime || '11:00') + ':00').getTime();
+  return [a, b];
+}
+function sameHomes(p1, p2){
+  if(p1 === 'both' || p2 === 'both') return true;
+  return p1 === p2;
+}
+async function findInvoiceOverlap(property, checkin, checkinTime, checkout, checkoutTime, excludeId){
+  const [ns, ne] = stayWindowMs(checkin, checkinTime, checkout, checkoutTime);
+  const snap = await db.collection('genga_nilayam').get();   // throws if Firestore is unreachable, so the caller blocks rather than risks a double booking
+  let hit = null;
+  snap.forEach(doc=>{
+    if(hit || doc.id === excludeId || !doc.id.startsWith('request_')) return;
+    const d = doc.data();
+    if(d.status !== 'invoiced' || !d.checkin || !d.checkout) return;
+    if(!sameHomes(property, d.property)) return;
+    const [es, ee] = stayWindowMs(d.checkin, d.checkinTime, d.checkout, d.checkoutTime);
+    if(ns < ee && ne > es) hit = d;
+  });
+  return hit;
+}
+function overlapMessage(d){
+  return 'Cannot create this invoice: these dates and times overlap an existing invoice' +
+    (d.invoiceNo ? ' (' + d.invoiceNo + ')' : '') + ' for ' + (d.name || 'another guest') + ' at ' +
+    (d.propertyName || d.property) + ', ' + fmtDate(d.checkin) + (d.checkinTime ? ' ' + fmtTime(d.checkinTime) : '') +
+    ' to ' + fmtDate(d.checkout) + (d.checkoutTime ? ' ' + fmtTime(d.checkoutTime) : '') +
+    '. Change the dates or times, or cancel the other invoice first.';
+}
 async function makeInvoiceNo(){
   const base = 'GN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-';
   for(let i = 0; i < 8; i++){
@@ -1691,6 +1725,17 @@ document.getElementById('inv-generate').addEventListener('click', async ()=>{
   if(!name || !total){
     document.getElementById('inv-error').textContent = 'Please fill in guest name and a total amount.';
     return;
+  }
+
+  if(currentInvoiceReq && currentInvoiceReq.checkin && currentInvoiceReq.checkout){
+    try{
+      const clash = await findInvoiceOverlap(currentInvoiceReq.property, currentInvoiceReq.checkin, currentInvoiceReq.checkinTime,
+        currentInvoiceReq.checkout, currentInvoiceReq.checkoutTime, currentInvoiceReqId);
+      if(clash){ document.getElementById('inv-error').textContent = overlapMessage(clash); return; }
+    }catch(e){
+      document.getElementById('inv-error').textContent = 'Could not check for overlapping invoices (connection problem). Invoice not created. Please try again.';
+      return;
+    }
   }
 
   const invoiceNo = await makeInvoiceNo();
@@ -4570,6 +4615,21 @@ document.getElementById('q-generate').addEventListener('click', async ()=>{
   const propertyName = property === 'both' ? 'Ground Floor - Home#1 & Home#2' : PROPERTIES[property].name;
   const checkinDisplay = fmtDate(checkinDate) + (checkinTime ? ' at ' + fmtTime(checkinTime) : '');
   const checkoutDisplay = fmtDate(checkoutDate) + (checkoutTime ? ' at ' + fmtTime(checkoutTime) : '');
+
+  {
+    const [ws, we] = stayWindowMs(checkinDate, checkinTime, checkoutDate, checkoutTime);
+    if(!(we > ws)){
+      document.getElementById('q-error').textContent = 'Check-out must be after check-in. Invoice not created.';
+      return;
+    }
+    try{
+      const clash = await findInvoiceOverlap(property, checkinDate, checkinTime, checkoutDate, checkoutTime, null);
+      if(clash){ document.getElementById('q-error').textContent = overlapMessage(clash); return; }
+    }catch(e){
+      document.getElementById('q-error').textContent = 'Could not check for overlapping invoices (connection problem). Invoice not created. Please try again.';
+      return;
+    }
+  }
 
   const invoiceNo = await makeInvoiceNo();
   const issuedDate = fmtDate(todayKey());
