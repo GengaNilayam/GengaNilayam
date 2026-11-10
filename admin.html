@@ -2026,6 +2026,37 @@ async function promptUpdatePhone(reqId, req, refreshFn){
   }
 }
 
+// Change which home a booking is for (Home#1, Home#2 or both). The calendar
+// is kept in sync: the old home's dates are freed, then the new home's are
+// held (only when an advance is on record, same as every other booking).
+async function promptUpdateHome(reqId, req, refreshFn){
+  const cur = req.property === 'both' ? '3' : req.property === 'home2' ? '2' : '1';
+  const input = prompt('Which home is booked?\n1 = Home#1\n2 = Home#2\n3 = Both home#1 & 2\n\nEnter 1, 2 or 3:', cur);
+  if(input === null) return; // cancelled
+  const key = String(input).trim();
+  const newProp = key === '1' ? 'home1' : key === '2' ? 'home2' : key === '3' ? 'both' : null;
+  if(!newProp){ alert('Please enter 1, 2 or 3.'); return; }
+  if(newProp === req.property){ alert('That is already the booked home.'); return; }
+  const newName = newProp === 'both' ? 'Both home#1 & 2' : PROPERTIES[newProp].name;
+  const cap = newProp === 'both' ? PROPERTIES.home1.maxGuests + PROPERTIES.home2.maxGuests : PROPERTIES[newProp].maxGuests;
+  if(Number(req.guests) > cap && !confirm(`${newName} fits ${cap} guests, but this booking has ${req.guests}. Change anyway?`)) return;
+  try{
+    const clash = await findInvoiceOverlap(newProp, req.checkin, req.checkinTime, req.checkout, req.checkoutTime, req.id || reqId);
+    if(clash){ alert(overlapMessage(clash)); return; }
+  }catch(e){
+    alert('Could not check for overlapping invoices (connection problem). Home not changed. Please try again.');
+    return;
+  }
+  try{
+    await unblockDatesForRequest(req);
+    await db.collection('genga_nilayam').doc(reqId).update({ property: newProp, propertyName: newName });
+    if(Number(req.advance) > 0) await blockDatesForRequest({ ...req, property: newProp, propertyName: newName });
+    if(refreshFn) await refreshFn();
+  }catch(e){
+    alert('Could not update. Please try again.');
+  }
+}
+
 async function promptUpdateGuests(reqId, req, refreshFn){
   const input = prompt('Number of guests:', req.guests || '');
   if(input === null) return; // cancelled
@@ -2180,6 +2211,7 @@ function renderReportList(listEl, all){
         ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-date-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out date</button>` : ''}
         ${r.status === 'invoiced' ? `<button type="button" class="report-checkout-time-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update check-out time</button>` : ''}
         ${r.status === 'invoiced' ? `<button type="button" class="report-phone-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update phone number</button>` : ''}
+        ${r.status === 'invoiced' ? `<button type="button" class="report-home-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update home</button>` : ''}
         ${r.status === 'invoiced' ? `<button type="button" class="report-guests-btn" data-req-id="${r.id}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update No. of guests</button>` : ''}
         ${r.status === 'invoiced' ? `<button type="button" class="report-bill-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>` : ''}
         ${r.status === 'invoiced' ? `<button type="button" class="report-advance-btn" data-req-id="${r.id}" data-advance="${Number(r.advance)||0}" data-total="${Number(r.total)||0}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update advance</button>` : ''}
@@ -2219,6 +2251,12 @@ function renderReportList(listEl, all){
     btn.addEventListener('click', ()=>{
       const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
       if(item) promptUpdatePhone(item.id, item, refreshReports);
+    });
+  });
+  listEl.querySelectorAll('.report-home-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = all.find(x => x.id === btn.getAttribute('data-req-id'));
+      if(item) promptUpdateHome(item.id, item, refreshReports);
     });
   });
   listEl.querySelectorAll('.report-guests-btn').forEach(btn=>{
