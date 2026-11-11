@@ -1503,7 +1503,7 @@ function checkinCardHtml(r){
   return `
   <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
     <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''}</div>
-    <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${guestBreak(r)}</div>
+    <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; <b>${r.propertyName || r.property || ''}</b> &middot; ${guestBreak(r)}</div>
     <div style="font-size:12px;color:var(--ink-soft);">${r.phone || ''}</div>
     ${guestNumber ? `<div style="margin-top:8px;"><a href="https://api.whatsapp.com/send?phone=${guestNumber}" target="_blank" rel="noopener" style="color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;">Message Guest</a></div>` : ''}
   </div>`;
@@ -2201,7 +2201,7 @@ function renderReportList(listEl, all){
   listEl.innerHTML = all.map(r => `
     <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
       <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)}${r.checkinTime ? ' at ' + fmtTime(r.checkinTime) : ''} &rarr; ${fmtDateReport(r.checkout)}${r.checkoutTime ? ' at ' + fmtTime(r.checkoutTime) : ''}</div>
-      <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName || r.property || ''} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${guestBreak(r)}</div>
+      <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; <b>${r.propertyName || r.property || ''}</b> &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'} &middot; ${guestBreak(r)}</div>
       <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${r.phone || ''} &middot; ${r.status === 'invoiced' ? 'Invoiced' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</div>
       <div style="font-size:12px;color:var(--ink-soft);">${r.submittedAt ? 'Booked: ' + new Date(r.submittedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }) : ''}</div>
       ${r.status === 'invoiced' ? `<div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">Total: Rs. ${(Number(r.total)||0).toLocaleString('en-IN')} &middot; Advance: Rs. ${(Number(r.advance)||0).toLocaleString('en-IN')} &middot; Balance: Rs. ${(r.balance != null ? Number(r.balance) : Number(r.total)||0).toLocaleString('en-IN')}</div>` : ''}
@@ -4943,7 +4943,7 @@ async function loadPinScreenReport(){
       const n = r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime);
       return `<div style="border:1px solid var(--line);border-radius:10px;padding:9px 12px;">
         <div style="font-weight:700;font-size:14px;">${esc(fmtDateReport(r.checkin))}${r.checkinTime ? ' at ' + esc(fmtTime(r.checkinTime)) : ''} &rarr; ${esc(fmtDateReport(r.checkout))}${r.checkoutTime ? ' at ' + esc(fmtTime(r.checkoutTime)) : ''}</div>
-        <div style="font-size:12.5px;color:var(--ink-soft);">${esc(r.propertyName || r.property || '')} &middot; ${esc(n || '?')} night${n === 1 ? '' : 's'} &middot; ${esc(guestBreak(r))}</div>
+        <div style="font-size:12.5px;color:var(--ink-soft);"><b>${esc(r.propertyName || r.property || '')}</b> &middot; ${esc(n || '?')} night${n === 1 ? '' : 's'} &middot; ${esc(guestBreak(r))}</div>
         ${r.checkin < today ? '<div style="font-size:12px;font-weight:700;color:#b3261e;margin-top:2px;">Past check-in &middot; payment pending</div>' : ''}
       </div>`;
     }).join('');
