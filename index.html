@@ -293,7 +293,7 @@
   <div class="hero-content">
     <div class="hero-eyebrow">Genga Nilayam Homestay · Virudhunagar</div>
     <h1>You don't just stay, you belong!</h1>
-    <p id="hero-desc">Two homes to choose from — a 1-bedroom Home#1 with a large living area for up to 10 guests, and a self-contained Home#2 with 3 private bathrooms for up to 8.</p>
+    <p id="hero-desc">Two homes to choose from — a 1-bedroom Home#1 with a large living area for up to 10 guests, and a self-contained Home#2 with 3 private bathrooms for up to 10.</p>
     <div class="hero-actions">
     </div>
   </div>
@@ -333,9 +333,9 @@
     <div>
       <div class="kicker">About the home</div>
       <h2 style="font-size:26px;margin:0 0 12px;">Ground Floor - Home#2</h2>
-      <p style="color:var(--ink-soft);font-size:15px;">Home#2 sits just behind the main house — a private, self-contained 1250 sqft home with 3 bathrooms, ideal for larger groups of up to 8 who still want their own separate space. Same neighbourhood, same warm welcome, same 1.4 km walk to Virudunagar Junction Railway Station.</p>
+      <p style="color:var(--ink-soft);font-size:15px;">Home#2 sits just behind the main house — a private, self-contained 1250 sqft home with 3 bathrooms, ideal for larger groups of up to 10 who still want their own separate space. Same neighbourhood, same warm welcome, same 1.4 km walk to Virudunagar Junction Railway Station.</p>
       <div class="stat-row">
-        <div><div class="num">8</div><div class="lbl">Max guests</div></div>
+        <div><div class="num">10</div><div class="lbl">Max guests</div></div>
         <div><div class="num">1250</div><div class="lbl">sqft home</div></div>
         <div><div class="num">3</div><div class="lbl">Bathrooms</div></div>
         <div><div class="num">1.4 km</div><div class="lbl">to railway station</div></div>
@@ -482,11 +482,12 @@
         <div class="tier"><span>6 guests</span><span class="amt">₹3,500</span></div>
         <div class="tier"><span>7 guests</span><span class="amt">₹3,750</span></div>
         <div class="tier"><span>8 guests</span><span class="amt">₹4,000</span></div>
+        <div class="tier"><span>10 guests</span><span class="amt">₹6,500</span></div>
       </div>
       <div class="price-side">
         <ul>
           <li>Rates shown are per night, for the whole home</li>
-          <li>Comfortably fits 6 guests ideally, with 2 extra beds available for up to 8</li>
+          <li>Comfortably fits 10 guests, with 10 cots available</li>
           <li>Flexible check-in and check-out — just tell us your approximate timings</li>
         </ul>
       </div>
@@ -495,12 +496,12 @@
       <div>
         <h3>Muhurtham/Wedding season rates</h3>
         <div class="note">Whole home, all amenities included</div>
-        <div class="tier"><span>Whole home (6 + 2 extra beds), per night</span><span class="amt">₹6,500</span></div>
+        <div class="tier"><span>Whole home (10 cots), per night</span><span class="amt">₹6,500</span></div>
       </div>
       <div class="price-side">
         <ul>
           <li>Rate shown is per night, for the whole home — not priced per person</li>
-          <li>Comfortably fits 6 guests ideally, with 2 extra beds available for up to 8</li>
+          <li>Comfortably fits 10 guests, with 10 cots available</li>
           <li>Flexible check-in and check-out — just tell us your approximate timings</li>
         </ul>
       </div>
@@ -700,7 +701,7 @@ function guestsText(g){
 function clampGuestCounts(prop){
   const aEl = document.getElementById('f-adults'), kEl = document.getElementById('f-kids');
   if(!aEl || !kEl) return;
-  const max = (prop === 'both') ? 18 : ((PROPERTIES[prop] || {}).maxGuests || 10);
+  const max = (prop === 'both') ? 20 : ((PROPERTIES[prop] || {}).maxGuests || 10);
   const kMax = Math.max(0, max - 1);
   aEl.max = max; kEl.max = kMax;
   let a = parseInt(aEl.value, 10), k = parseInt(kEl.value, 10);
@@ -712,7 +713,7 @@ function clampGuestCounts(prop){
 }
 const PROPERTIES = {
   home1: { name: "Ground Floor - Home#1", maxGuests: 10, blockedKey: 'blocked_dates_home1' },
-  home2: { name: "Ground Floor - Home#2", maxGuests: 8, blockedKey: 'blocked_dates_home2' }
+  home2: { name: "Ground Floor - Home#2", maxGuests: 10, blockedKey: 'blocked_dates_home2' }
 };
 let currentProperty = 'home1'; // guest-facing tab selection
 let adminProperty = 'home1';   // admin panel's independently-selected property
