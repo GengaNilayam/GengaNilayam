@@ -4943,6 +4943,7 @@ async function loadPinScreenReport(){
       const n = r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime);
       return `<div style="border:1px solid var(--line);border-radius:10px;padding:9px 12px;">
         <div style="font-weight:700;font-size:14px;">${esc(fmtDateReport(r.checkin))}${r.checkinTime ? ' at ' + esc(fmtTime(r.checkinTime)) : ''} &rarr; ${esc(fmtDateReport(r.checkout))}${r.checkoutTime ? ' at ' + esc(fmtTime(r.checkoutTime)) : ''}</div>
+        <div style="font-size:13px;font-weight:600;">${esc(r.name || 'Guest')}</div>
         <div style="font-size:12.5px;color:var(--ink-soft);"><b>${esc(r.propertyName || r.property || '')}</b> &middot; ${esc(n || '?')} night${n === 1 ? '' : 's'} &middot; ${esc(guestBreak(r))}</div>
         ${r.checkin < today ? '<div style="font-size:12px;font-weight:700;color:#b3261e;margin-top:2px;">Past check-in &middot; payment pending</div>' : ''}
       </div>`;
