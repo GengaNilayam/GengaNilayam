@@ -412,6 +412,14 @@
           <select id="revenue-year-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;"></select>
         </div>
       </div>
+      <div class="field" style="margin-bottom:12px;"><label>Home</label>
+        <select id="revenue-home-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;">
+          <option value="all">All homes (with split)</option>
+          <option value="home1">Home#1 only</option>
+          <option value="home2">Home#2 only</option>
+          <option value="both">Both home#1 &amp; 2 only</option>
+        </select>
+      </div>
       <button type="button" id="revenue-range-toggle" style="width:100%;padding:9px;margin-bottom:12px;background:#fff;color:var(--wood);border:2px solid var(--wood);border-radius:10px;font-weight:600;font-size:13px;">Use a custom date range instead</button>
       <div id="revenue-range-fields" style="display:none;margin-bottom:16px;">
         <div class="field-row">
@@ -2401,6 +2409,17 @@ let revenueViewMode = 'month';
 let revenueViewYear = null, revenueViewMonth = null;
 let revenueViewFrom = null, revenueViewTo = null;
 
+/* Which home a booking belongs to: 'home1', 'home2' or 'both'. */
+function revenueHomeKey(d){
+  const p = d.property;
+  if(p === 'home1' || p === 'home2' || p === 'both') return p;
+  const n = String(d.propertyName || p || '').toLowerCase();
+  if(/both|&/.test(n) || (n.includes('home#1') && n.includes('home#2'))) return 'both';
+  if(n.includes('home#2') || n.includes('home 2') || n.includes('home2')) return 'home2';
+  return 'home1';
+}
+const REVENUE_HOME_LABEL = { home1: 'Home#1', home2: 'Home#2', both: 'Both home#1 & 2' };
+
 async function generateRevenueReport(opts){
   if(opts && opts.mode === 'range'){
     revenueViewMode = 'range';
@@ -2424,10 +2443,15 @@ async function generateRevenueReport(opts){
     const snap = await db.collection('genga_nilayam').get();
     let total = 0, totalPaid = 0, totalBalance = 0, count = 0;
     const items = [];
+    const homeSel = document.getElementById('revenue-home-select');
+    const homeFilter = homeSel ? homeSel.value : 'all';
+    const split = { home1: { amt: 0, paid: 0, n: 0 }, home2: { amt: 0, paid: 0, n: 0 }, both: { amt: 0, paid: 0, n: 0 } };
     snap.forEach(doc=>{
       const data = doc.data();
       if(!doc.id.startsWith('request_') || data.status !== 'invoiced') return;
       if(!data.checkin) return;
+      const homeKey = revenueHomeKey(data);
+      if(homeFilter !== 'all' && homeKey !== homeFilter) return;
       if(revenueViewMode === 'range'){
         if(!revenueViewFrom || !revenueViewTo) return;
         if(data.checkin < revenueViewFrom || data.checkin > revenueViewTo) return;
@@ -2442,21 +2466,27 @@ async function generateRevenueReport(opts){
       totalPaid += adv;
       totalBalance += bal;
       count += 1;
-      items.push({ id: doc.id, name: data.name, phone: data.phone, propertyName: data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt, advance: adv, balance: bal });
+      split[homeKey].amt += amt; split[homeKey].paid += adv; split[homeKey].n += 1;
+      items.push({ id: doc.id, name: data.name, phone: data.phone, propertyName: REVENUE_HOME_LABEL[homeKey] || data.propertyName || data.property, checkin: data.checkin, checkout: data.checkout, amount: amt, advance: adv, balance: bal });
     });
     items.sort((a,b)=> (a.checkin||'').localeCompare(b.checkin||''));
 
     const monthLabel = revenueViewMode === 'range'
       ? `${fmtDate(revenueViewFrom)} to ${fmtDate(revenueViewTo)}`
       : new Date(revenueViewYear, revenueViewMonth, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
-    let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}</div>`;
+    let html = `<div style="font-size:15px;font-weight:600;margin-bottom:4px;">${monthLabel}${homeFilter !== 'all' ? ' &middot; ' + REVENUE_HOME_LABEL[homeFilter] : ''}</div>`;
     html += `<div style="font-size:26px;font-weight:700;color:var(--deep);margin-bottom:4px;">Rs. ${total.toLocaleString('en-IN')}</div>`;
     html += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:6px;">${count} invoice${count===1?'':'s'} &middot; total bill value</div>`;
     html += `<div style="font-size:14px;font-weight:600;margin-bottom:16px;">Total paid: Rs. ${totalPaid.toLocaleString('en-IN')} &middot; Balance: Rs. ${totalBalance.toLocaleString('en-IN')}</div>`;
+    if(homeFilter === 'all'){
+      html += '<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;display:grid;gap:4px;">' +
+        ['home1','home2','both'].map(k => `<div style="display:flex;justify-content:space-between;gap:8px;"><b>${REVENUE_HOME_LABEL[k]}</b><span>Rs. ${split[k].amt.toLocaleString('en-IN')} &middot; ${split[k].n} invoice${split[k].n===1?'':'s'} &middot; paid Rs. ${split[k].paid.toLocaleString('en-IN')}</span></div>`).join('') +
+        '</div>';
+    }
     html += items.map(r => `
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
         <div style="font-weight:700;font-size:15px;">${fmtDateReport(r.checkin)} &rarr; ${fmtDateReport(r.checkout)} &middot; ${r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime) || '?'} night${(r.nights || nightsBetween(r.checkin, r.checkinTime, r.checkout, r.checkoutTime)) === 1 ? '' : 's'}</div>
-        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; ${r.propertyName}</div>
+        <div style="font-size:13px;color:var(--ink-soft);">${r.name || 'Guest'} &middot; <b>${r.propertyName}</b></div>
         <div style="font-size:13px;color:var(--ink-soft);">Bill value: Rs. ${r.amount.toLocaleString('en-IN')} &middot; Paid: Rs. ${r.advance.toLocaleString('en-IN')} &middot; Balance: Rs. ${r.balance.toLocaleString('en-IN')}</div>
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" class="revenue-bill-btn" data-req-id="${r.id}" data-total="${r.amount}" data-advance="${r.advance}" style="background:none;border:none;color:var(--wood);font-size:12px;font-weight:600;text-decoration:underline;padding:0;cursor:pointer;">Update bill amount</button>
@@ -2507,6 +2537,7 @@ document.getElementById('admin-revenue-btn').addEventListener('click', async ()=
   revenueViewMode = 'month';
   revenueViewYear = null; revenueViewMonth = null; // fresh open always starts on the current month
   revenueViewFrom = null; revenueViewTo = null;
+  document.getElementById('revenue-home-select').value = 'all';
   document.getElementById('revenue-range-fields').style.display = 'none';
   document.getElementById('revenue-range-from').value = '';
   document.getElementById('revenue-range-to').value = '';
@@ -2530,6 +2561,7 @@ document.getElementById('revenue-month-select').addEventListener('change', ()=>{
 document.getElementById('revenue-year-select').addEventListener('change', ()=>{
   generateRevenueReport({ mode: 'month', year: Number(document.getElementById('revenue-year-select').value), month: Number(document.getElementById('revenue-month-select').value) });
 });
+document.getElementById('revenue-home-select').addEventListener('change', ()=> generateRevenueReport());
 document.getElementById('revenue-range-toggle').addEventListener('click', ()=>{
   const fields = document.getElementById('revenue-range-fields');
   const showing = fields.style.display !== 'none';
